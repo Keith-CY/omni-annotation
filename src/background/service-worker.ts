@@ -62,6 +62,11 @@ type CaptureVisibleTabMessage = {
   type: "capture-visible-tab";
 };
 
+type RecordsForPageMessage = {
+  type: "records.for-page";
+  url: string;
+};
+
 type SyncRootConnectedMessage = {
   type: "sync.root-connected";
 };
@@ -71,11 +76,13 @@ type RuntimeMessage =
   | CreateFromImageMessage
   | CreateFromScreenshotMessage
   | CaptureVisibleTabMessage
+  | RecordsForPageMessage
   | SyncRootConnectedMessage;
 
 type MessageResult =
   | { ok: true; id: string; record: AnnotationRecord }
   | { ok: true; dataUrl: string }
+  | { ok: true; records: AnnotationRecord[] }
   | { ok: true; replay: Awaited<ReturnType<typeof flushPendingSync>> }
   | { ok: false; error: string };
 
@@ -107,6 +114,8 @@ async function handleMessage(message: unknown, sender: ChromeRuntimeMessageSende
         return await createImageRecord(parsed.message);
       case "record.create-from-screenshot":
         return await createScreenshotRecord(parsed.message);
+      case "records.for-page":
+        return await recordsForPage(parsed.message);
       case "sync.root-connected":
         return { ok: true, replay: await flushPendingSyncFromStoredRoot() };
     }
@@ -122,6 +131,12 @@ async function captureVisibleTab(sender: ChromeRuntimeMessageSender): Promise<Me
 
   const dataUrl = await chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" });
   return { ok: true, dataUrl };
+}
+
+async function recordsForPage(message: RecordsForPageMessage): Promise<MessageResult> {
+  const store = await createRecordStore();
+  const records = await store.listRecordsByPage(pageIdForUrl(message.url));
+  return { ok: true, records };
 }
 
 async function createTextRecord(message: CreateFromSelectionMessage): Promise<MessageResult> {
@@ -315,6 +330,8 @@ function parseRuntimeMessage(message: unknown): { ok: true; message: RuntimeMess
   switch (message.type) {
     case "capture-visible-tab":
       return { ok: true, message: { type: "capture-visible-tab" } };
+    case "records.for-page":
+      return parseRecordsForPageMessage(message);
     case "sync.root-connected":
       return { ok: true, message: { type: "sync.root-connected" } };
     case "record.create-from-selection":
@@ -326,6 +343,22 @@ function parseRuntimeMessage(message: unknown): { ok: true; message: RuntimeMess
     default:
       return { ok: false, error: "unsupported-message" };
   }
+}
+
+function parseRecordsForPageMessage(
+  message: Record<string, unknown>
+): { ok: true; message: RecordsForPageMessage } | { ok: false; error: string } {
+  if (!isNonEmptyString(message.url) || !isValidUrl(message.url)) {
+    return { ok: false, error: "invalid-url" };
+  }
+
+  return {
+    ok: true,
+    message: {
+      type: "records.for-page",
+      url: message.url
+    }
+  };
 }
 
 function parseSelectionMessage(

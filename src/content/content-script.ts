@@ -1,9 +1,9 @@
 import { installHighlightStyles, renderTextHighlight } from "./highlight-layer";
 import { startImagePickMode, type StopImagePickMode } from "./image-picker";
-import { readCurrentSelection } from "./selection";
+import { readCurrentSelection, readCurrentSentenceSelection } from "./selection";
 import { cropCaptureDataUrl, startScreenshotOverlay } from "./screenshot-overlay";
 import { mountToolbar, type ToolbarAction, type ToolbarController } from "./toolbar";
-import type { AnnotationColor, AnnotationRecord } from "../shared/types";
+import type { AnnotationColor, AnnotationRecord, TextTarget } from "../shared/types";
 
 type PagePayload = {
   url: string;
@@ -13,6 +13,10 @@ type PagePayload = {
 
 type MessageResponse =
   | { ok: true; id?: string; dataUrl?: string; record?: AnnotationRecord }
+  | { ok: false; error: string };
+
+type PageRecordsResponse =
+  | { ok: true; records: AnnotationRecord[] }
   | { ok: false; error: string };
 
 let selectedColor: AnnotationColor = "yellow";
@@ -25,6 +29,7 @@ toolbar = mountToolbar((action) => {
 });
 document.addEventListener("selectionchange", updateToolbarForSelection);
 document.addEventListener("mouseup", updateToolbarForSelection);
+void restorePageHighlights().catch(() => undefined);
 
 async function handleToolbarAction(action: ToolbarAction): Promise<void> {
   switch (action.type) {
@@ -32,7 +37,10 @@ async function handleToolbarAction(action: ToolbarAction): Promise<void> {
       selectedColor = action.color;
       return;
     case "highlight":
-      await createRecordFromSelection();
+      await createRecordFromSelection(readCurrentSelection());
+      return;
+    case "sentence-highlight":
+      await createRecordFromSelection(readCurrentSentenceSelection());
       return;
     case "image":
       startImageMode();
@@ -43,8 +51,7 @@ async function handleToolbarAction(action: ToolbarAction): Promise<void> {
   }
 }
 
-async function createRecordFromSelection(): Promise<void> {
-  const target = readCurrentSelection();
+async function createRecordFromSelection(target: TextTarget | undefined): Promise<void> {
   if (!target) {
     return;
   }
@@ -57,8 +64,37 @@ async function createRecordFromSelection(): Promise<void> {
   });
 
   if (response.ok && response.record) {
-    renderTextHighlight(response.record);
+    renderTextHighlightIfNeeded(response.record);
   }
+}
+
+async function restorePageHighlights(): Promise<void> {
+  const response = await sendMessage<PageRecordsResponse>({
+    type: "records.for-page",
+    url: location.href
+  });
+
+  if (!response.ok) {
+    return;
+  }
+
+  for (const record of response.records) {
+    renderTextHighlightIfNeeded(record);
+  }
+}
+
+function renderTextHighlightIfNeeded(record: AnnotationRecord): boolean {
+  if (record.target.type !== "text" || hasRenderedRecord(record.id)) {
+    return false;
+  }
+
+  return renderTextHighlight(record);
+}
+
+function hasRenderedRecord(recordId: string): boolean {
+  return Array.from(document.querySelectorAll<HTMLElement>("[data-omni-record-id]")).some(
+    (element) => element.dataset.omniRecordId === recordId
+  );
 }
 
 function updateToolbarForSelection(): void {
@@ -101,7 +137,8 @@ function startScreenshotMode(): void {
           croppedDataUrl,
           rect,
           page: currentPagePayload(),
-          devicePixelRatio
+          devicePixelRatio,
+          color: selectedColor
         });
       } finally {
         toolbar.restore(wasToolbarVisible);

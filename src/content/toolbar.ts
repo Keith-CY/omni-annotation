@@ -3,6 +3,7 @@ import type { AnnotationColor } from "../shared/types";
 export type ToolbarAction =
   | { type: "color"; color: AnnotationColor }
   | { type: "highlight" }
+  | { type: "sentence-highlight" }
   | { type: "image" }
   | { type: "screenshot" };
 
@@ -101,10 +102,13 @@ export function mountToolbar(onAction: (action: ToolbarAction) => void): Toolbar
   const noteButton = createButton("Note", "Create annotation from selected text", () =>
     onAction({ type: "highlight" })
   );
+  const sentenceButton = createButton("Sentence", "Create annotation from current sentence", () =>
+    onAction({ type: "sentence-highlight" })
+  );
   const imageButton = createButton("Image", "Pick image", () => onAction({ type: "image" }));
   const shotButton = createButton("Shot", "Capture screenshot area", () => onAction({ type: "screenshot" }));
 
-  bar.append(...swatches, noteButton, imageButton, shotButton);
+  bar.append(...swatches, noteButton, sentenceButton, imageButton, shotButton);
   shadow.append(style, bar);
   document.documentElement.append(host);
   return toolbarController(host, bar);

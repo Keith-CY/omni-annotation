@@ -3,6 +3,7 @@ import {
   createTextTargetFromParts,
   cssPathForElement,
   readCurrentSelection,
+  sentenceRangeForSelection,
   textContextForRange
 } from "../src/content/selection";
 
@@ -92,6 +93,55 @@ describe("textContextForRange", () => {
       prefix: "alpha repeat beta ",
       suffix: " gamma"
     });
+  });
+});
+
+describe("sentenceRangeForSelection", () => {
+  it("expands a selection to the containing sentence including punctuation", () => {
+    const text = "Before. Select the middle words here! After.";
+    const start = text.indexOf("middle");
+    const end = start + "middle".length;
+
+    const range = sentenceRangeForSelection(text, start, end);
+
+    expect(range ? text.slice(range.start, range.end) : undefined).toBe("Select the middle words here!");
+  });
+
+  it("does not expand past selected sentence punctuation", () => {
+    const text = "Before. Select the middle words here! After.";
+    const start = text.indexOf("Select");
+    const end = text.indexOf(" After.");
+
+    const range = sentenceRangeForSelection(text, start, end);
+
+    expect(range ? text.slice(range.start, range.end) : undefined).toBe("Select the middle words here!");
+  });
+
+  it("treats newline as a sentence boundary without including it", () => {
+    const text = "First line\nSecond line selection\nThird line";
+    const start = text.indexOf("selection");
+    const end = start + "selection".length;
+
+    const range = sentenceRangeForSelection(text, start, end);
+
+    expect(range ? text.slice(range.start, range.end) : undefined).toBe("Second line selection");
+  });
+
+  it("supports CJK sentence terminators", () => {
+    const text = "第一句。这里是选中的句子？下一句。";
+    const start = text.indexOf("选中");
+    const end = start + "选中".length;
+
+    const range = sentenceRangeForSelection(text, start, end);
+
+    expect(range ? text.slice(range.start, range.end) : undefined).toBe("这里是选中的句子？");
+  });
+
+  it("returns undefined for invalid or blank selection ranges", () => {
+    expect(sentenceRangeForSelection("hello", 3, 3)).toBeUndefined();
+    expect(sentenceRangeForSelection("hello", -1, 2)).toBeUndefined();
+    expect(sentenceRangeForSelection("hello", 1, 8)).toBeUndefined();
+    expect(sentenceRangeForSelection("before   after", 6, 9)).toBeUndefined();
   });
 });
 

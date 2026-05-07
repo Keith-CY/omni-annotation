@@ -16,6 +16,11 @@ export type TextContext = {
   suffix: string;
 };
 
+export type TextRange = {
+  start: number;
+  end: number;
+};
+
 export function createTextTargetFromParts(parts: TextTargetParts): TextTarget {
   return {
     type: "text",
@@ -30,6 +35,61 @@ export function createTextTargetFromParts(parts: TextTargetParts): TextTarget {
 }
 
 export function readCurrentSelection(): TextTarget | undefined {
+  return readSelectionTarget(false);
+}
+
+export function readCurrentSentenceSelection(): TextTarget | undefined {
+  return readSelectionTarget(true);
+}
+
+export function sentenceRangeForSelection(text: string, start: number, end: number): TextRange | undefined {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > text.length) {
+    return undefined;
+  }
+
+  if (text.slice(start, end).trim().length === 0) {
+    return undefined;
+  }
+
+  let sentenceStart = 0;
+  for (let index = start - 1; index >= 0; index -= 1) {
+    if (isSentenceBoundary(text[index])) {
+      sentenceStart = index + 1;
+      break;
+    }
+  }
+
+  let sentenceEnd = text.length;
+  let endScanStart = end;
+  while (endScanStart > start && isInlineWhitespace(text[endScanStart - 1])) {
+    endScanStart -= 1;
+  }
+
+  for (let index = Math.max(start, endScanStart - 1); index < text.length; index += 1) {
+    const character = text[index];
+    if (isNewlineBoundary(character)) {
+      sentenceEnd = index;
+      break;
+    }
+
+    if (isSentenceTerminator(character)) {
+      sentenceEnd = index + 1;
+      break;
+    }
+  }
+
+  while (sentenceStart < sentenceEnd && isInlineWhitespace(text[sentenceStart])) {
+    sentenceStart += 1;
+  }
+
+  while (sentenceEnd > sentenceStart && isInlineWhitespace(text[sentenceEnd - 1])) {
+    sentenceEnd -= 1;
+  }
+
+  return sentenceStart < sentenceEnd ? { start: sentenceStart, end: sentenceEnd } : undefined;
+}
+
+function readSelectionTarget(expandToSentence: boolean): TextTarget | undefined {
   const selection = globalThis.getSelection?.();
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
     return undefined;
@@ -53,6 +113,21 @@ export function readCurrentSelection(): TextTarget | undefined {
 
   const text = commonElement.textContent ?? "";
   const context = offsets ? textContextForRange(text, offsets.start, offsets.end) : undefined;
+  if (expandToSentence && offsets) {
+    const sentenceRange = sentenceRangeForSelection(text, offsets.start, offsets.end);
+    const sentenceQuote = sentenceRange ? text.slice(sentenceRange.start, sentenceRange.end) : "";
+    if (sentenceRange && sentenceQuote.trim().length > 0) {
+      const sentenceContext = textContextForRange(text, sentenceRange.start, sentenceRange.end);
+      return createTextTargetFromParts({
+        quote: sentenceQuote,
+        prefix: sentenceContext.prefix,
+        suffix: sentenceContext.suffix,
+        startOffset: sentenceRange.start,
+        endOffset: sentenceRange.end,
+        cssPath: cssPathForElement(commonElement)
+      });
+    }
+  }
 
   return createTextTargetFromParts({
     quote,
@@ -62,6 +137,29 @@ export function readCurrentSelection(): TextTarget | undefined {
     endOffset: range.endOffset,
     cssPath: cssPathForElement(commonElement)
   });
+}
+
+function isSentenceBoundary(character: string | undefined): boolean {
+  return isNewlineBoundary(character) || isSentenceTerminator(character);
+}
+
+function isSentenceTerminator(character: string | undefined): boolean {
+  return (
+    character === "." ||
+    character === "!" ||
+    character === "?" ||
+    character === "。" ||
+    character === "！" ||
+    character === "？"
+  );
+}
+
+function isNewlineBoundary(character: string | undefined): boolean {
+  return character === "\n" || character === "\r";
+}
+
+function isInlineWhitespace(character: string | undefined): boolean {
+  return character === " " || character === "\t";
 }
 
 export function textContextForRange(text: string, start: number, end: number): TextContext {
