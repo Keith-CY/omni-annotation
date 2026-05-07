@@ -17,11 +17,11 @@ export function installHighlightStyles(): void {
       -webkit-box-decoration-break: clone;
       padding: 0 1px;
     }
-    .${MARK_CLASS}[data-omni-color="yellow"] { background: rgba(255, 219, 77, 0.55); }
-    .${MARK_CLASS}[data-omni-color="green"] { background: rgba(84, 214, 127, 0.45); }
-    .${MARK_CLASS}[data-omni-color="pink"] { background: rgba(255, 128, 171, 0.45); }
-    .${MARK_CLASS}[data-omni-color="purple"] { background: rgba(180, 136, 255, 0.45); }
-    .${MARK_CLASS}[data-omni-color="cyan"] { background: rgba(80, 211, 230, 0.45); }
+    .${MARK_CLASS}-yellow { background: rgba(255, 219, 77, 0.55); }
+    .${MARK_CLASS}-green { background: rgba(84, 214, 127, 0.45); }
+    .${MARK_CLASS}-pink { background: rgba(255, 128, 171, 0.45); }
+    .${MARK_CLASS}-purple { background: rgba(180, 136, 255, 0.45); }
+    .${MARK_CLASS}-cyan { background: rgba(80, 211, 230, 0.45); }
   `;
   document.documentElement.append(style);
 }
@@ -37,9 +37,10 @@ export function renderTextHighlight(record: AnnotationRecord): boolean {
   }
 
   const mark = document.createElement("mark");
-  mark.className = MARK_CLASS;
+  const color = record.color ?? "yellow";
+  mark.className = `${MARK_CLASS} ${MARK_CLASS}-${color}`;
   mark.dataset.omniRecordId = record.id;
-  mark.dataset.omniColor = record.color ?? "yellow";
+  mark.dataset.omniColor = color;
 
   return wrapRange(range, mark);
 }

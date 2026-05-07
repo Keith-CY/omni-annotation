@@ -62,8 +62,8 @@ export function startScreenshotOverlay(onSelect: (rect: ScreenshotRect) => void)
   const onPointerDown = (event: PointerEvent) => {
     event.preventDefault();
     active = true;
-    startX = event.clientX;
-    startY = event.clientY;
+    startX = clamp(event.clientX, 0, window.innerWidth);
+    startY = clamp(event.clientY, 0, window.innerHeight);
     host.setPointerCapture(event.pointerId);
     drawSelection(rectFromPoints(startX, startY, startX, startY), selection);
   };
@@ -137,12 +137,21 @@ export async function cropCaptureDataUrl(
 }
 
 function rectFromPoints(startX: number, startY: number, endX: number, endY: number): ScreenshotRect {
+  const clampedStartX = clamp(startX, 0, window.innerWidth);
+  const clampedStartY = clamp(startY, 0, window.innerHeight);
+  const clampedEndX = clamp(endX, 0, window.innerWidth);
+  const clampedEndY = clamp(endY, 0, window.innerHeight);
+
   return {
-    x: Math.max(0, Math.min(startX, endX)),
-    y: Math.max(0, Math.min(startY, endY)),
-    width: Math.abs(endX - startX),
-    height: Math.abs(endY - startY)
+    x: Math.min(clampedStartX, clampedEndX),
+    y: Math.min(clampedStartY, clampedEndY),
+    width: Math.abs(clampedEndX - clampedStartX),
+    height: Math.abs(clampedEndY - clampedStartY)
   };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function drawSelection(rect: ScreenshotRect, selection: HTMLElement): void {
