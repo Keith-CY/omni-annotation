@@ -1,11 +1,12 @@
 import { createRecordStore, type RecordStore } from "../shared/idb";
 import { searchRecords } from "../shared/search";
-import type { AnnotationRecord } from "../shared/types";
+import type { AnnotationColor, AnnotationRecord } from "../shared/types";
 import { clear, el } from "../ui/dom";
 
 const app = document.querySelector<HTMLElement>("#app");
 const navItems = ["Inbox", "All Records", "Pages", "Collections", "Gallery", "Review", "Sync", "Settings"];
 const activeNavItem = "All Records";
+const editableColors: AnnotationColor[] = ["yellow", "green", "pink", "purple", "cyan"];
 
 let store: RecordStore;
 let records: AnnotationRecord[] = [];
@@ -166,6 +167,15 @@ function renderInspectorContent(record: AnnotationRecord | undefined): HTMLEleme
       void saveNote(record, (event.target as HTMLTextAreaElement).value);
     }
   }, [record.note]);
+  const tagInput = el("input", {
+    "aria-label": "Record tags",
+    type: "text",
+    value: record.tags.join(", "),
+    placeholder: "tag-one, tag-two",
+    onblur: (event) => {
+      void saveTags(record, (event.target as HTMLInputElement).value);
+    }
+  });
 
   return el("div", { className: "detail-list" }, [
       el("div", { className: "detail-heading" }, [
@@ -176,14 +186,40 @@ function renderInspectorContent(record: AnnotationRecord | undefined): HTMLEleme
       detailField("Kind", kindLabel(record.kind)),
       detailField("Created", formatDate(record.createdAt)),
       renderTargetDetails(record),
+      ...(record.color ? [renderColorEditor(record)] : []),
       el("div", { className: "detail-field" }, [el("label", {}, ["Note"]), note]),
       el("div", { className: "detail-field" }, [
         el("label", {}, ["Tags"]),
-        record.tags.length > 0
-          ? el("div", { className: "tag-row" }, record.tags.map((tag) => el("span", { className: "tag" }, [tag])))
-          : el("p", { className: "subtle" }, ["No tags"])
+        tagInput
       ]),
       detailField("Sync file", record.sync.filePath ?? "Not flushed")
+  ]);
+}
+
+function renderColorEditor(record: AnnotationRecord): HTMLElement {
+  return el("div", { className: "detail-field" }, [
+    el("label", {}, ["Color"]),
+    el(
+      "div",
+      { className: "color-swatch-row", role: "group", "aria-label": "Record color" },
+      editableColors.map((color) => {
+        const isSelected = record.color === color;
+        return el(
+          "button",
+          {
+            className: `color-swatch-button ${color} ${isSelected ? "selected" : ""}`,
+            type: "button",
+            "aria-label": `Set color ${color}`,
+            "aria-pressed": isSelected ? "true" : "false",
+            "aria-current": isSelected ? "true" : undefined,
+            onclick: () => {
+              void saveColor(record, color);
+            }
+          },
+          []
+        );
+      })
+    )
   ]);
 }
 
@@ -222,9 +258,29 @@ async function saveNote(record: AnnotationRecord, note: string): Promise<void> {
     return;
   }
 
+  await saveRecordMetadata({ ...record, note });
+}
+
+async function saveColor(record: AnnotationRecord, color: AnnotationColor): Promise<void> {
+  if (color === record.color) {
+    return;
+  }
+
+  await saveRecordMetadata({ ...record, color });
+}
+
+async function saveTags(record: AnnotationRecord, rawTags: string): Promise<void> {
+  const tags = parseTags(rawTags);
+  if (arraysEqual(tags, record.tags)) {
+    return;
+  }
+
+  await saveRecordMetadata({ ...record, tags });
+}
+
+async function saveRecordMetadata(record: AnnotationRecord): Promise<void> {
   const updated: AnnotationRecord = {
     ...record,
-    note,
     updatedAt: new Date().toISOString(),
     sync: record.sync.status === "flushed" ? { ...record.sync, status: "pending" } : record.sync
   };
@@ -233,6 +289,26 @@ async function saveNote(record: AnnotationRecord, note: string): Promise<void> {
   filteredRecords = sortRecords(searchRecords(records, query));
   selectedId = updated.id;
   renderDynamicPanels();
+}
+
+function parseTags(rawTags: string): string[] {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+
+  for (const tag of rawTags.split(",")) {
+    const normalized = tag.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    tags.push(normalized);
+  }
+
+  return tags;
+}
+
+function arraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function recordHeading(record: AnnotationRecord): string {
