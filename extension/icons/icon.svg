@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Omni Annotation icon">
+  <rect width="128" height="128" rx="24" fill="#1d4ed8"/>
+  <path d="M34 78.5 76.5 36 92 51.5 49.5 94H34V78.5Z" fill="#ffffff"/>
+  <path d="M68 44.5 83.5 60" stroke="#93c5fd" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="39" cy="39" r="9" fill="#facc15"/>
+</svg>

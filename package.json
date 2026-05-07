@@ -1,0 +1,17 @@
+{
+  "name": "omni-annotation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "bun run clean && bun build src/background/service-worker.ts src/content/content-script.ts src/pages/sidepanel.ts src/pages/library.ts src/pages/options.ts --outdir dist/src --target browser && bun run copy-static",
+    "copy-static": "mkdir -p dist/src/pages dist/src/ui && cp -R extension/. dist/ && cp src/pages/*.html dist/src/pages/ && cp src/ui/styles.css dist/src/ui/styles.css",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
