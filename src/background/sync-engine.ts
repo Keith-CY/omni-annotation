@@ -70,6 +70,15 @@ export async function flushAsset(
 
 export async function flushPendingSync(): Promise<FlushPendingSyncResult> {
   const root = await getRootHandle();
+  return flushPendingSyncWithRoot(root);
+}
+
+export async function flushPendingSyncFromStoredRoot(): Promise<FlushPendingSyncResult> {
+  const root = await getRootHandle({ refreshFromMeta: true });
+  return flushPendingSyncWithRoot(root);
+}
+
+async function flushPendingSyncWithRoot(root: RootHandleResult): Promise<FlushPendingSyncResult> {
   if (!root.ok) {
     return {
       ok: false,
@@ -228,8 +237,12 @@ function assetKey(folder: "screenshots" | "images", filename: string): string {
   return `${folder}/${filename}`;
 }
 
-async function getRootHandle(): Promise<RootHandleResult> {
-  const handle = rootHandle ?? (await restoreRootHandle());
+async function getRootHandle(options: { refreshFromMeta?: boolean } = {}): Promise<RootHandleResult> {
+  const handle = options.refreshFromMeta ? await restoreRootHandle() : rootHandle ?? (await restoreRootHandle());
+  if (options.refreshFromMeta) {
+    rootHandle = handle;
+  }
+
   if (!handle) {
     return { ok: false, reason: "folder-not-connected" };
   }

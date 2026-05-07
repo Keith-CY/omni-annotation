@@ -1,4 +1,10 @@
-import { EVENTS_FILE_PATH, flushAsset, flushEvent, flushPendingSync } from "./sync-engine";
+import {
+  EVENTS_FILE_PATH,
+  flushAsset,
+  flushEvent,
+  flushPendingSync,
+  flushPendingSyncFromStoredRoot
+} from "./sync-engine";
 import { createId } from "../shared/id";
 import { createRecordStore, type StoredAsset } from "../shared/idb";
 import { domainForUrl, normalizeUrl, pageIdForUrl } from "../shared/page";
@@ -56,15 +62,21 @@ type CaptureVisibleTabMessage = {
   type: "capture-visible-tab";
 };
 
+type SyncRootConnectedMessage = {
+  type: "sync.root-connected";
+};
+
 type RuntimeMessage =
   | CreateFromSelectionMessage
   | CreateFromImageMessage
   | CreateFromScreenshotMessage
-  | CaptureVisibleTabMessage;
+  | CaptureVisibleTabMessage
+  | SyncRootConnectedMessage;
 
 type MessageResult =
   | { ok: true; id: string; record: AnnotationRecord }
   | { ok: true; dataUrl: string }
+  | { ok: true; replay: Awaited<ReturnType<typeof flushPendingSync>> }
   | { ok: false; error: string };
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -95,6 +107,8 @@ async function handleMessage(message: unknown, sender: ChromeRuntimeMessageSende
         return await createImageRecord(parsed.message);
       case "record.create-from-screenshot":
         return await createScreenshotRecord(parsed.message);
+      case "sync.root-connected":
+        return { ok: true, replay: await flushPendingSyncFromStoredRoot() };
     }
   } catch (error) {
     return { ok: false, error: errorReason(error) };
@@ -126,7 +140,7 @@ async function createImageRecord(message: CreateFromImageMessage): Promise<Messa
     ...(message.altText ? { altText: message.altText } : {}),
     ...(message.cssPath ? { cssPath: message.cssPath } : {})
   };
-  let shouldFlushEvent = false;
+  let shouldFlushEvent = true;
 
   try {
     const blob = await fetchImageBlob(message.sourceUrl);
@@ -149,9 +163,10 @@ async function createImageRecord(message: CreateFromImageMessage): Promise<Messa
       await store.putAsset({ ...pendingAsset, syncStatus: "flushed" });
     } else {
       target.assetPath = `pending/images/${filename}`;
+      shouldFlushEvent = false;
     }
   } catch {
-    shouldFlushEvent = false;
+    shouldFlushEvent = !target.assetPath?.startsWith("pending/");
   }
 
   const record = baseRecord(message.page, "image");
@@ -300,6 +315,8 @@ function parseRuntimeMessage(message: unknown): { ok: true; message: RuntimeMess
   switch (message.type) {
     case "capture-visible-tab":
       return { ok: true, message: { type: "capture-visible-tab" } };
+    case "sync.root-connected":
+      return { ok: true, message: { type: "sync.root-connected" } };
     case "record.create-from-selection":
       return parseSelectionMessage(message);
     case "record.create-from-image":

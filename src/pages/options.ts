@@ -8,6 +8,17 @@ type FolderMeta = {
   permission?: FileSystemPermissionState | "unsupported";
 };
 
+type SyncReplaySummary = {
+  ok: boolean;
+  recordsFlushed: number;
+  assetsFlushed: number;
+  reason?: string;
+};
+
+type SyncReplayMessageResponse =
+  | { ok: true; replay: SyncReplaySummary }
+  | { ok: false; error: string };
+
 const app = document.querySelector<HTMLElement>("#app");
 let store: RecordStore;
 let statusMessage = "";
@@ -82,7 +93,7 @@ async function connectFolder(): Promise<void> {
     await store.setMeta("syncRootHandle", handle);
     await store.setMeta("folderName", handle.name);
     await store.setMeta("folderConnectedAt", connectedAt);
-    statusMessage = `Folder connected. Permission: ${permission}.`;
+    statusMessage = `Folder connected. Permission: ${permission}. ${await replayPendingSyncMessage()}`;
   } catch (error) {
     statusMessage = pickerMessage(error);
   }
@@ -128,6 +139,50 @@ function canStoreConnectedFolder(permission: FileSystemPermissionState | "unsupp
   return permission === "granted" || permission === "unsupported";
 }
 
+async function replayPendingSyncMessage(): Promise<string> {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "sync.root-connected" });
+    if (!isSyncReplayMessageResponse(response)) {
+      return "Pending replay could not be confirmed.";
+    }
+
+    if (!response.ok) {
+      return `Pending replay failed: ${response.error}.`;
+    }
+
+    const replay = response.replay;
+    if (!replay.ok) {
+      return `Pending replay incomplete: ${replay.reason ?? "unknown-error"}.`;
+    }
+
+    return `Pending replay flushed ${replay.recordsFlushed} records and ${replay.assetsFlushed} assets.`;
+  } catch (error) {
+    return `Pending replay failed: ${error instanceof Error ? error.message : "unknown-error"}.`;
+  }
+}
+
+function isSyncReplayMessageResponse(value: unknown): value is SyncReplayMessageResponse {
+  if (!isObject(value) || typeof value.ok !== "boolean") {
+    return false;
+  }
+
+  if (!value.ok) {
+    return typeof value.error === "string";
+  }
+
+  return isSyncReplaySummary(value.replay);
+}
+
+function isSyncReplaySummary(value: unknown): value is SyncReplaySummary {
+  return (
+    isObject(value) &&
+    typeof value.ok === "boolean" &&
+    typeof value.recordsFlushed === "number" &&
+    typeof value.assetsFlushed === "number" &&
+    (value.reason === undefined || typeof value.reason === "string")
+  );
+}
+
 function detailField(label: string, value: string): HTMLElement {
   return el("div", { className: "detail-field" }, [
     el("label", {}, [label]),
@@ -163,6 +218,10 @@ function renderError(error: unknown): void {
       ])
     ])
   );
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export {};
