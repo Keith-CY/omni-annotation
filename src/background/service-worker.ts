@@ -158,7 +158,10 @@ async function createScreenshotRecord(message: CreateFromScreenshotMessage): Pro
   };
   const record = baseRecord(message.page, "screenshot");
   record.target = target;
-  return putRecordAndFlush(record, store, assetFlush.ok);
+  return putRecordAndFlush(record, store, {
+    shouldFlushEvent: assetFlush.ok,
+    canMarkFlushed: assetFlush.ok
+  });
 }
 
 function baseRecord(page: PagePayload, kind: AnnotationRecord["kind"]): AnnotationRecord {
@@ -187,10 +190,16 @@ function baseRecord(page: PagePayload, kind: AnnotationRecord["kind"]): Annotati
 async function putRecordAndFlush(
   record: AnnotationRecord,
   existingStore?: Awaited<ReturnType<typeof createRecordStore>>,
-  canMarkFlushed = true
+  options: { shouldFlushEvent?: boolean; canMarkFlushed?: boolean } = {}
 ): Promise<MessageResult> {
   const store = existingStore ?? (await createRecordStore());
   await store.putRecord(record);
+
+  const shouldFlushEvent = options.shouldFlushEvent ?? true;
+  const canMarkFlushed = options.canMarkFlushed ?? true;
+  if (!shouldFlushEvent) {
+    return { ok: true, id: record.id, record };
+  }
 
   const flush = await flushEvent({ type: "record.created", record });
   if (flush.ok && canMarkFlushed) {

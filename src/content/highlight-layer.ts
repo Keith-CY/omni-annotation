@@ -205,9 +205,15 @@ function isUnsafeRange(range: Range): boolean {
   const endElement = elementForRangeNode(range.endContainer);
   const commonElement = elementForRangeNode(range.commonAncestorContainer);
 
-  return [startElement, endElement, commonElement].some((element) =>
-    element ? isUnsafeHighlightElement(element) : true
-  );
+  if (
+    [startElement, endElement, commonElement].some((element) =>
+      element ? isUnsafeHighlightElement(element) : true
+    )
+  ) {
+    return true;
+  }
+
+  return commonElement ? rangeIntersectsUnsafeDescendant(range, commonElement) : true;
 }
 
 function elementForRangeNode(node: Node): Element | undefined {
@@ -225,4 +231,28 @@ function isUnsafeHighlightElement(element: Element): boolean {
 
   const editable = element.closest("[contenteditable]");
   return editable instanceof HTMLElement && editable.contentEditable !== "false";
+}
+
+function rangeIntersectsUnsafeDescendant(range: Range, commonElement: Element): boolean {
+  const walker = document.createTreeWalker(commonElement, NodeFilter.SHOW_ELEMENT);
+  let node = walker.nextNode();
+
+  while (node) {
+    const element = node as Element;
+    if (isUnsafeHighlightElement(element) && safelyIntersectsNode(range, element)) {
+      return true;
+    }
+
+    node = walker.nextNode();
+  }
+
+  return false;
+}
+
+function safelyIntersectsNode(range: Range, node: Node): boolean {
+  try {
+    return range.intersectsNode(node);
+  } catch {
+    return true;
+  }
 }

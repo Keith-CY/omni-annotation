@@ -23,6 +23,8 @@ installHighlightStyles();
 toolbar = mountToolbar((action) => {
   void handleToolbarAction(action).catch(() => undefined);
 });
+document.addEventListener("selectionchange", updateToolbarForSelection);
+document.addEventListener("mouseup", updateToolbarForSelection);
 
 async function handleToolbarAction(action: ToolbarAction): Promise<void> {
   switch (action.type) {
@@ -56,6 +58,15 @@ async function createRecordFromSelection(): Promise<void> {
 
   if (response.ok && response.record) {
     renderTextHighlight(response.record);
+  }
+}
+
+function updateToolbarForSelection(): void {
+  const selection = globalThis.getSelection?.();
+  if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
+    toolbar.show();
+  } else {
+    toolbar.hide();
   }
 }
 
