@@ -48,6 +48,17 @@ interface ChromeCaptureOptions {
   quality?: number;
 }
 
+type FileSystemPermissionMode = "read" | "readwrite";
+type FileSystemPermissionState = "granted" | "denied" | "prompt";
+
+interface FileSystemHandlePermissionDescriptor {
+  mode?: FileSystemPermissionMode;
+}
+
+interface FileSystemDirectoryHandle {
+  queryPermission?(descriptor?: FileSystemHandlePermissionDescriptor): Promise<FileSystemPermissionState>;
+}
+
 declare const chrome: {
   runtime: {
     onInstalled: ChromeEvent<(details: ChromeRuntimeInstalledDetails) => void>;
