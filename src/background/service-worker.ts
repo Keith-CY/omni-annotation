@@ -1,4 +1,4 @@
-import { flushAsset, flushEvent } from "./sync-engine";
+import { EVENTS_FILE_PATH, flushAsset, flushEvent, flushPendingSync } from "./sync-engine";
 import { createId } from "../shared/id";
 import { createRecordStore, type StoredAsset } from "../shared/idb";
 import { domainForUrl, normalizeUrl, pageIdForUrl } from "../shared/page";
@@ -48,6 +48,7 @@ type CreateFromScreenshotMessage = {
   croppedDataUrl: string;
   rect: ScreenshotRect;
   devicePixelRatio: number;
+  color?: AnnotationColor;
   page: PagePayload;
 };
 
@@ -68,12 +69,15 @@ type MessageResult =
 
 chrome.runtime.onInstalled.addListener(() => {
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  void flushPendingSync();
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   void handleMessage(message, sender).then(sendResponse);
   return true;
 });
+
+void flushPendingSync();
 
 async function handleMessage(message: unknown, sender: ChromeRuntimeMessageSender): Promise<MessageResult> {
   const parsed = parseRuntimeMessage(message);
@@ -115,16 +119,47 @@ async function createTextRecord(message: CreateFromSelectionMessage): Promise<Me
 }
 
 async function createImageRecord(message: CreateFromImageMessage): Promise<MessageResult> {
+  const store = await createRecordStore();
   const target: ImageTarget = {
     type: "image",
     sourceUrl: message.sourceUrl,
     ...(message.altText ? { altText: message.altText } : {}),
     ...(message.cssPath ? { cssPath: message.cssPath } : {})
   };
+  let shouldFlushEvent = false;
+
+  try {
+    const blob = await fetchImageBlob(message.sourceUrl);
+    const assetId = createId("asset");
+    const filename = `${assetId}.${extensionForMimeType(blob.type)}`;
+    const pendingAsset: StoredAsset = {
+      id: assetId,
+      folder: "images",
+      filename,
+      blob,
+      createdAt: nowIso(),
+      syncStatus: "pending"
+    };
+    await store.putAsset(pendingAsset);
+
+    const assetFlush = await flushAsset("images", filename, blob);
+    if (assetFlush.ok) {
+      target.assetPath = assetFlush.assetPath;
+      shouldFlushEvent = true;
+      await store.putAsset({ ...pendingAsset, syncStatus: "flushed" });
+    } else {
+      target.assetPath = `pending/images/${filename}`;
+    }
+  } catch {
+    shouldFlushEvent = false;
+  }
 
   const record = baseRecord(message.page, "image");
   record.target = target;
-  return putRecordAndFlush(record);
+  return putRecordAndFlush(record, store, {
+    shouldFlushEvent,
+    canMarkFlushed: shouldFlushEvent
+  });
 }
 
 async function createScreenshotRecord(message: CreateFromScreenshotMessage): Promise<MessageResult> {
@@ -150,13 +185,23 @@ async function createScreenshotRecord(message: CreateFromScreenshotMessage): Pro
     await store.putAsset({ ...pendingAsset, syncStatus: "flushed" });
   }
 
+  const color = message.color ?? "yellow";
   const target: ScreenshotTarget = {
     type: "screenshot",
     assetPath,
     viewportRect: message.rect,
-    devicePixelRatio: message.devicePixelRatio
+    devicePixelRatio: message.devicePixelRatio,
+    annotations: [
+      {
+        type: "highlight",
+        color,
+        note: "",
+        rect: message.rect
+      }
+    ]
   };
   const record = baseRecord(message.page, "screenshot");
+  record.color = color;
   record.target = target;
   return putRecordAndFlush(record, store, {
     shouldFlushEvent: assetFlush.ok,
@@ -201,9 +246,15 @@ async function putRecordAndFlush(
     return { ok: true, id: record.id, record };
   }
 
-  const flush = await flushEvent({ type: "record.created", record });
+  const flushedRecord: AnnotationRecord = {
+    ...record,
+    sync: { status: "flushed", filePath: EVENTS_FILE_PATH }
+  };
+  const flush = await flushEvent({
+    type: "record.created",
+    record: canMarkFlushed ? flushedRecord : record
+  });
   if (flush.ok && canMarkFlushed) {
-    const flushedRecord: AnnotationRecord = { ...record, sync: { status: "flushed" } };
     await store.putRecord(flushedRecord);
     return { ok: true, id: flushedRecord.id, record: flushedRecord };
   }
@@ -214,6 +265,31 @@ async function putRecordAndFlush(
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const response = await fetch(dataUrl);
   return response.blob();
+}
+
+async function fetchImageBlob(sourceUrl: string): Promise<Blob> {
+  const response = await fetch(sourceUrl);
+  if (!response.ok) {
+    throw new Error(`image-fetch-failed:${response.status}`);
+  }
+
+  return response.blob();
+}
+
+function extensionForMimeType(mimeType: string): "png" | "jpg" | "webp" | "bin" {
+  const normalized = mimeType.split(";")[0]?.trim().toLowerCase();
+
+  switch (normalized) {
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
+    default:
+      return "bin";
+  }
 }
 
 function parseRuntimeMessage(message: unknown): { ok: true; message: RuntimeMessage } | { ok: false; error: string } {
@@ -299,6 +375,10 @@ function parseScreenshotMessage(
     return { ok: false, error: "invalid-device-pixel-ratio" };
   }
 
+  if (message.color !== undefined && !isColor(message.color)) {
+    return { ok: false, error: "invalid-color" };
+  }
+
   if (!isPagePayload(message.page)) {
     return { ok: false, error: "invalid-page" };
   }
@@ -310,6 +390,7 @@ function parseScreenshotMessage(
       croppedDataUrl: message.croppedDataUrl,
       rect: message.rect,
       devicePixelRatio: message.devicePixelRatio,
+      ...(isColor(message.color) ? { color: message.color } : {}),
       page: message.page
     }
   };

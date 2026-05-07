@@ -28,6 +28,7 @@ export type RecordStore = {
   deleteRecord(id: string): Promise<void>;
   putAsset(asset: StoredAsset): Promise<void>;
   getAsset(id: string): Promise<StoredAsset | undefined>;
+  listAssets(): Promise<StoredAsset[]>;
   listPendingAssets(): Promise<StoredAsset[]>;
   setMeta(key: string, value: unknown): Promise<void>;
   getMeta<T>(key: string): Promise<T | undefined>;
@@ -83,6 +84,11 @@ export async function createRecordStore(): Promise<RecordStore> {
         tx.objectStore(ASSET_STORE).get(id),
         `get asset ${id}`
       );
+    },
+
+    async listAssets() {
+      const tx = db.transaction(ASSET_STORE, "readonly");
+      return requestToPromise<StoredAsset[]>(tx.objectStore(ASSET_STORE).getAll(), "list assets");
     },
 
     async listPendingAssets() {

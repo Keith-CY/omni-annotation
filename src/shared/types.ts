@@ -26,11 +26,19 @@ export type ScreenshotTarget = {
   assetPath: string;
   viewportRect: { x: number; y: number; width: number; height: number };
   devicePixelRatio: number;
+  annotations?: ScreenshotAnnotation[];
 };
 
 export type PageTarget = { type: "page" };
 
 export type AnnotationTarget = TextTarget | ImageTarget | ScreenshotTarget | PageTarget;
+
+export type ScreenshotAnnotation = {
+  type: "highlight";
+  color: AnnotationColor;
+  note: string;
+  rect: { x: number; y: number; width: number; height: number };
+};
 
 export type AnnotationRecord = {
   id: string;
