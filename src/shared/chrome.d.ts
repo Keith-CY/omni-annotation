@@ -57,6 +57,15 @@ interface FileSystemHandlePermissionDescriptor {
 
 interface FileSystemDirectoryHandle {
   queryPermission?(descriptor?: FileSystemHandlePermissionDescriptor): Promise<FileSystemPermissionState>;
+  requestPermission?(descriptor?: FileSystemHandlePermissionDescriptor): Promise<FileSystemPermissionState>;
+}
+
+interface DirectoryPickerOptions {
+  mode?: FileSystemPermissionMode;
+}
+
+interface Window {
+  showDirectoryPicker?(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>;
 }
 
 declare const chrome: {
