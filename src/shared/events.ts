@@ -46,13 +46,35 @@ export function serializeEvent(event: RecordEvent): string {
 export function parseEventLine(line: string): RecordEvent {
   const parsed = JSON.parse(line) as unknown;
 
-  if (!hasEventType(parsed)) {
+  if (!isObject(parsed) || typeof parsed.type !== "string") {
     throw new Error("Invalid event line: missing type");
   }
 
-  return parsed as RecordEvent;
+  switch (parsed.type) {
+    case "record.created":
+      if (!isObject(parsed.record) || typeof parsed.record.id !== "string") {
+        throw new Error("Invalid event line: invalid event");
+      }
+      return parsed as RecordEvent;
+    case "record.updated":
+      if (
+        typeof parsed.id !== "string" ||
+        typeof parsed.updatedAt !== "string" ||
+        !isObject(parsed.patch)
+      ) {
+        throw new Error("Invalid event line: invalid event");
+      }
+      return parsed as RecordEvent;
+    case "record.deleted":
+      if (typeof parsed.id !== "string" || typeof parsed.updatedAt !== "string") {
+        throw new Error("Invalid event line: invalid event");
+      }
+      return parsed as RecordEvent;
+    default:
+      throw new Error(`Invalid event line: unknown event type ${parsed.type}`);
+  }
 }
 
-function hasEventType(value: unknown): value is { type: unknown } {
-  return typeof value === "object" && value !== null && "type" in value;
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

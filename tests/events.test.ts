@@ -91,6 +91,52 @@ describe("event serialization", () => {
   it("throws when the parsed line has no type", () => {
     expect(() => parseEventLine(JSON.stringify({ id: "rec_1" }))).toThrow("missing type");
   });
+
+  it("throws on unknown event types", () => {
+    expect(() => parseEventLine(JSON.stringify({ type: "record.archived", id: "rec_1" }))).toThrow(
+      "unknown event type"
+    );
+  });
+
+  it("throws when record.created is missing a record with an id", () => {
+    expect(() => parseEventLine(JSON.stringify({ type: "record.created" }))).toThrow("invalid event");
+    expect(() => parseEventLine(JSON.stringify({ type: "record.created", record: {} }))).toThrow(
+      "invalid event"
+    );
+  });
+
+  it("throws when record.updated is missing required fields", () => {
+    expect(() =>
+      parseEventLine(
+        JSON.stringify({
+          type: "record.updated",
+          updatedAt: "2026-05-07T00:01:00.000Z",
+          patch: {}
+        })
+      )
+    ).toThrow("invalid event");
+    expect(() =>
+      parseEventLine(JSON.stringify({ type: "record.updated", id: "rec_1", patch: {} }))
+    ).toThrow("invalid event");
+    expect(() =>
+      parseEventLine(
+        JSON.stringify({
+          type: "record.updated",
+          id: "rec_1",
+          updatedAt: "2026-05-07T00:01:00.000Z"
+        })
+      )
+    ).toThrow("invalid event");
+  });
+
+  it("throws when record.deleted is missing required fields", () => {
+    expect(() =>
+      parseEventLine(JSON.stringify({ type: "record.deleted", updatedAt: "2026-05-07T00:02:00.000Z" }))
+    ).toThrow("invalid event");
+    expect(() => parseEventLine(JSON.stringify({ type: "record.deleted", id: "rec_1" }))).toThrow(
+      "invalid event"
+    );
+  });
 });
 
 describe("page helpers", () => {
