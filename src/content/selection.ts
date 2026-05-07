@@ -11,6 +11,11 @@ export type TextTargetParts = {
 
 const CONTEXT_LENGTH = 48;
 
+export type TextContext = {
+  prefix: string;
+  suffix: string;
+};
+
 export function createTextTargetFromParts(parts: TextTargetParts): TextTarget {
   return {
     type: "text",
@@ -37,6 +42,7 @@ export function readCurrentSelection(): TextTarget | undefined {
 
   const range = selection.getRangeAt(0);
   const commonElement = elementForNode(range.commonAncestorContainer);
+  const offsets = commonElement ? rangeOffsetsInElement(commonElement, range) : undefined;
   if (!commonElement) {
     return createTextTargetFromParts({
       quote,
@@ -46,19 +52,23 @@ export function readCurrentSelection(): TextTarget | undefined {
   }
 
   const text = commonElement.textContent ?? "";
-  const selectedIndex = text.indexOf(quote);
+  const context = offsets ? textContextForRange(text, offsets.start, offsets.end) : undefined;
 
   return createTextTargetFromParts({
     quote,
-    prefix: selectedIndex >= 0 ? text.slice(Math.max(0, selectedIndex - CONTEXT_LENGTH), selectedIndex) : "",
-    suffix:
-      selectedIndex >= 0
-        ? text.slice(selectedIndex + quote.length, selectedIndex + quote.length + CONTEXT_LENGTH)
-        : "",
+    prefix: context?.prefix ?? "",
+    suffix: context?.suffix ?? "",
     startOffset: range.startOffset,
     endOffset: range.endOffset,
     cssPath: cssPathForElement(commonElement)
   });
+}
+
+export function textContextForRange(text: string, start: number, end: number): TextContext {
+  return {
+    prefix: text.slice(Math.max(0, start - CONTEXT_LENGTH), start),
+    suffix: text.slice(end, end + CONTEXT_LENGTH)
+  };
 }
 
 export function cssPathForElement(element: Element): string {
@@ -94,4 +104,81 @@ function nthOfType(element: Element): number {
   }
 
   return index;
+}
+
+function rangeOffsetsInElement(element: Element, range: Range): { start: number; end: number } | undefined {
+  const start = textOffsetForBoundary(element, range.startContainer, range.startOffset);
+  const end = textOffsetForBoundary(element, range.endContainer, range.endOffset);
+
+  if (start === undefined || end === undefined) {
+    return undefined;
+  }
+
+  return { start, end };
+}
+
+function textOffsetForBoundary(root: Element, boundaryNode: Node, boundaryOffset: number): number | undefined {
+  if (boundaryNode.nodeType === Node.TEXT_NODE) {
+    return textOffsetForTextBoundary(root, boundaryNode as Text, boundaryOffset);
+  }
+
+  if (boundaryNode.nodeType === Node.ELEMENT_NODE) {
+    return textOffsetForElementBoundary(root, boundaryNode as Element, boundaryOffset);
+  }
+
+  return undefined;
+}
+
+function textOffsetForTextBoundary(root: Element, boundaryNode: Text, boundaryOffset: number): number | undefined {
+  let cursor = 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+
+  while (node) {
+    if (node === boundaryNode) {
+      return cursor + boundaryOffset;
+    }
+
+    cursor += node.textContent?.length ?? 0;
+    node = walker.nextNode();
+  }
+
+  return undefined;
+}
+
+function textOffsetForElementBoundary(
+  root: Element,
+  boundaryElement: Element,
+  boundaryOffset: number
+): number | undefined {
+  let cursor = 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+
+  while (node) {
+    if (isTextAfterElementBoundary(node, boundaryElement, boundaryOffset)) {
+      return cursor;
+    }
+
+    cursor += node.textContent?.length ?? 0;
+    node = walker.nextNode();
+  }
+
+  return cursor;
+}
+
+function isTextAfterElementBoundary(node: Node, boundaryElement: Element, boundaryOffset: number): boolean {
+  let current: Node | null = node;
+  let childOfBoundary: Node | undefined;
+
+  while (current && current !== boundaryElement) {
+    childOfBoundary = current;
+    current = current.parentNode;
+  }
+
+  if (!childOfBoundary) {
+    return false;
+  }
+
+  return Array.prototype.indexOf.call(boundaryElement.childNodes, childOfBoundary) >= boundaryOffset;
 }

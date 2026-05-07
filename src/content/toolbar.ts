@@ -8,10 +8,17 @@ export type ToolbarAction =
 
 const COLORS: AnnotationColor[] = ["yellow", "green", "pink", "purple", "cyan"];
 
-export function mountToolbar(onAction: (action: ToolbarAction) => void): HTMLElement {
+export type ToolbarController = {
+  element: HTMLElement;
+  hide(): boolean;
+  restore(wasVisible: boolean): void;
+  show(): void;
+};
+
+export function mountToolbar(onAction: (action: ToolbarAction) => void): ToolbarController {
   const existing = document.getElementById("omni-annotation-toolbar");
   if (existing) {
-    return existing;
+    return toolbarController(existing);
   }
 
   const host = document.createElement("div");
@@ -27,6 +34,13 @@ export function mountToolbar(onAction: (action: ToolbarAction) => void): HTMLEle
       z-index: 2147483646;
       font: 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+    .trigger {
+      border-radius: 999px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.14);
+      font-weight: 650;
+      min-width: 34px;
+      padding: 0 8px;
+    }
     .bar {
       align-items: center;
       background: rgba(255, 255, 255, 0.92);
@@ -38,6 +52,7 @@ export function mountToolbar(onAction: (action: ToolbarAction) => void): HTMLEle
       padding: 6px;
       user-select: none;
     }
+    .bar[hidden] { display: none; }
     button {
       appearance: none;
       border: 1px solid rgba(0, 0, 0, 0.16);
@@ -69,8 +84,14 @@ export function mountToolbar(onAction: (action: ToolbarAction) => void): HTMLEle
     .cyan { background: #50d3e6; }
   `;
 
+  const trigger = createButton("OA", "Show Omni Annotation toolbar", () => {
+    bar.hidden = !bar.hidden;
+  });
+  trigger.className = "trigger";
+
   const bar = document.createElement("div");
   bar.className = "bar";
+  bar.hidden = true;
 
   let selectedColor: AnnotationColor = "yellow";
   const swatches = COLORS.map((color) => {
@@ -97,9 +118,9 @@ export function mountToolbar(onAction: (action: ToolbarAction) => void): HTMLEle
   const shotButton = createButton("Shot", "Capture screenshot area", () => onAction({ type: "screenshot" }));
 
   bar.append(...swatches, noteButton, imageButton, shotButton);
-  shadow.append(style, bar);
+  shadow.append(style, trigger, bar);
   document.documentElement.append(host);
-  return host;
+  return toolbarController(host);
 }
 
 function createButton(label: string, title: string, onClick: () => void): HTMLButtonElement {
@@ -109,4 +130,23 @@ function createButton(label: string, title: string, onClick: () => void): HTMLBu
   button.title = title;
   button.addEventListener("click", onClick);
   return button;
+}
+
+function toolbarController(element: HTMLElement): ToolbarController {
+  return {
+    element,
+    hide() {
+      const wasVisible = element.style.display !== "none";
+      element.style.display = "none";
+      return wasVisible;
+    },
+    restore(wasVisible) {
+      if (wasVisible) {
+        element.style.display = "";
+      }
+    },
+    show() {
+      element.style.display = "";
+    }
+  };
 }

@@ -47,7 +47,7 @@ export function renderTextHighlight(record: AnnotationRecord): boolean {
 
 function rangeForTextTarget(target: TextTarget): Range | undefined {
   const root = target.cssPath ? document.querySelector(target.cssPath) : document.body;
-  if (!root) {
+  if (!root || isUnsafeHighlightElement(root)) {
     return undefined;
   }
 
@@ -67,7 +67,7 @@ function collectTextNodes(root: Element): Text[] {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
-      if (!parent || ["SCRIPT", "STYLE", "NOSCRIPT", "MARK"].includes(parent.tagName)) {
+      if (!parent || isUnsafeHighlightElement(parent)) {
         return NodeFilter.FILTER_REJECT;
       }
 
@@ -181,6 +181,10 @@ function nodeOffsetAt(textNodes: Text[], characterOffset: number): { node: Text;
 }
 
 function wrapRange(range: Range, mark: HTMLElement): boolean {
+  if (isUnsafeRange(range)) {
+    return false;
+  }
+
   try {
     range.surroundContents(mark);
     return true;
@@ -194,4 +198,31 @@ function wrapRange(range: Range, mark: HTMLElement): boolean {
       return false;
     }
   }
+}
+
+function isUnsafeRange(range: Range): boolean {
+  const startElement = elementForRangeNode(range.startContainer);
+  const endElement = elementForRangeNode(range.endContainer);
+  const commonElement = elementForRangeNode(range.commonAncestorContainer);
+
+  return [startElement, endElement, commonElement].some((element) =>
+    element ? isUnsafeHighlightElement(element) : true
+  );
+}
+
+function elementForRangeNode(node: Node): Element | undefined {
+  return node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement ?? undefined;
+}
+
+function isUnsafeHighlightElement(element: Element): boolean {
+  if (["SCRIPT", "STYLE", "NOSCRIPT", "INPUT", "TEXTAREA"].includes(element.tagName)) {
+    return true;
+  }
+
+  if (element.closest(`.${MARK_CLASS}`)) {
+    return true;
+  }
+
+  const editable = element.closest("[contenteditable]");
+  return editable instanceof HTMLElement && editable.contentEditable !== "false";
 }

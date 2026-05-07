@@ -60,12 +60,15 @@ export function startImagePickMode(onPick: (image: PickedImage) => void): StopIm
 
   const onClick = (event: MouseEvent) => {
     const image = imageFromTarget(event.target);
+    event.preventDefault();
+    event.stopPropagation();
+    stopImmediatePropagation(event);
+
     if (!image) {
+      stop();
       return;
     }
 
-    event.preventDefault();
-    event.stopPropagation();
     stop();
     onPick({
       sourceUrl: image.currentSrc || image.src,
@@ -76,6 +79,9 @@ export function startImagePickMode(onPick: (image: PickedImage) => void): StopIm
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      stopImmediatePropagation(event);
       stop();
     }
   };
@@ -90,4 +96,10 @@ export function startImagePickMode(onPick: (image: PickedImage) => void): StopIm
 
 function imageFromTarget(target: EventTarget | null): HTMLImageElement | undefined {
   return target instanceof HTMLImageElement ? target : undefined;
+}
+
+function stopImmediatePropagation(event: Event): void {
+  if (typeof event.stopImmediatePropagation === "function") {
+    event.stopImmediatePropagation();
+  }
 }

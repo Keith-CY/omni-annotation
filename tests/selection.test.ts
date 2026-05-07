@@ -1,5 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { createTextTargetFromParts, cssPathForElement, readCurrentSelection } from "../src/content/selection";
+import {
+  createTextTargetFromParts,
+  cssPathForElement,
+  readCurrentSelection,
+  textContextForRange
+} from "../src/content/selection";
 
 describe("createTextTargetFromParts", () => {
   it("creates an exact TextTarget with empty context defaults", () => {
@@ -74,6 +79,19 @@ describe("readCurrentSelection", () => {
         expect(readCurrentSelection()).toBeUndefined();
       }
     );
+  });
+});
+
+describe("textContextForRange", () => {
+  it("uses the selected repeated occurrence for prefix and suffix", () => {
+    const text = "alpha repeat beta repeat gamma";
+    const selectedStart = text.lastIndexOf("repeat");
+    const selectedEnd = selectedStart + "repeat".length;
+
+    expect(textContextForRange(text, selectedStart, selectedEnd)).toEqual({
+      prefix: "alpha repeat beta ",
+      suffix: " gamma"
+    });
   });
 });
 

@@ -2,7 +2,7 @@ import { installHighlightStyles, renderTextHighlight } from "./highlight-layer";
 import { startImagePickMode, type StopImagePickMode } from "./image-picker";
 import { readCurrentSelection } from "./selection";
 import { cropCaptureDataUrl, startScreenshotOverlay } from "./screenshot-overlay";
-import { mountToolbar, type ToolbarAction } from "./toolbar";
+import { mountToolbar, type ToolbarAction, type ToolbarController } from "./toolbar";
 import type { AnnotationColor, AnnotationRecord } from "../shared/types";
 
 type PagePayload = {
@@ -17,9 +17,10 @@ type MessageResponse =
 
 let selectedColor: AnnotationColor = "yellow";
 let stopImagePickMode: StopImagePickMode | undefined;
+let toolbar: ToolbarController;
 
 installHighlightStyles();
-mountToolbar((action) => {
+toolbar = mountToolbar((action) => {
   void handleToolbarAction(action).catch(() => undefined);
 });
 
@@ -73,21 +74,27 @@ function startImageMode(): void {
 function startScreenshotMode(): void {
   startScreenshotOverlay((rect) => {
     void (async () => {
-      const capture = await sendMessage<MessageResponse>({ type: "capture-visible-tab" });
-      if (!capture.ok || !capture.dataUrl) {
-        return;
+      const wasToolbarVisible = toolbar.hide();
+
+      try {
+        const capture = await sendMessage<MessageResponse>({ type: "capture-visible-tab" });
+        if (!capture.ok || !capture.dataUrl) {
+          return;
+        }
+
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        const croppedDataUrl = await cropCaptureDataUrl(capture.dataUrl, rect, devicePixelRatio);
+
+        await sendMessage({
+          type: "record.create-from-screenshot",
+          croppedDataUrl,
+          rect,
+          page: currentPagePayload(),
+          devicePixelRatio
+        });
+      } finally {
+        toolbar.restore(wasToolbarVisible);
       }
-
-      const devicePixelRatio = window.devicePixelRatio || 1;
-      const croppedDataUrl = await cropCaptureDataUrl(capture.dataUrl, rect, devicePixelRatio);
-
-      await sendMessage({
-        type: "record.create-from-screenshot",
-        croppedDataUrl,
-        rect,
-        page: currentPagePayload(),
-        devicePixelRatio
-      });
     })().catch(() => undefined);
   });
 }
