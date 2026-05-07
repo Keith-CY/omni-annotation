@@ -3,6 +3,7 @@
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #f6f7f8;
   color: #1d2329;
+  --bg: #f6f7f8;
   --background: #f6f7f8;
   --surface: #ffffff;
   --surface-muted: #f0f3f5;
@@ -172,6 +173,10 @@ textarea {
 }
 
 .nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -181,10 +186,26 @@ textarea {
   text-align: left;
 }
 
+.nav-item-planned {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.72;
+}
+
 .nav-item.active {
   background: var(--accent-muted);
   color: var(--accent);
   font-weight: 650;
+}
+
+.planned-label {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
 }
 
 .record-row {

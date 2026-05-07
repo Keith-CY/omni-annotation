@@ -5,6 +5,7 @@ import { clear, el } from "../ui/dom";
 
 const app = document.querySelector<HTMLElement>("#app");
 const navItems = ["Inbox", "All Records", "Pages", "Collections", "Gallery", "Review", "Sync", "Settings"];
+const activeNavItem = "All Records";
 
 let store: RecordStore;
 let records: AnnotationRecord[] = [];
@@ -53,9 +54,20 @@ function renderSidebar(): HTMLElement {
       el(
         "nav",
         { className: "nav-list", "aria-label": "Library sections" },
-        navItems.map((item) => el("button", { className: `nav-item ${item === "All Records" ? "active" : ""}`, type: "button" }, [item]))
+        navItems.map((item) => (item === activeNavItem ? renderActiveNavItem(item) : renderPlannedNavItem(item)))
       )
     ])
+  ]);
+}
+
+function renderActiveNavItem(item: string): HTMLElement {
+  return el("button", { className: "nav-item active", type: "button" }, [item]);
+}
+
+function renderPlannedNavItem(item: string): HTMLElement {
+  return el("div", { className: "nav-item nav-item-planned", "aria-disabled": "true" }, [
+    el("span", {}, [item]),
+    el("span", { className: "planned-label" }, ["Planned"])
   ]);
 }
 
