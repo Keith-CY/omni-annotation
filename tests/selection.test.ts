@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   createTextTargetFromParts,
   cssPathForElement,
+  readCurrentSentenceSelection,
   readCurrentSelection,
   sentenceRangeForSelection,
   textContextForRange
@@ -83,6 +84,48 @@ describe("readCurrentSelection", () => {
   });
 });
 
+describe("readCurrentSentenceSelection", () => {
+  it("expands through inline siblings to the containing sentence", () => {
+    const paragraph = new FakeElementNode("p");
+    const strong = new FakeElementNode("strong");
+    const selectedText = new FakeTextNode("selected");
+    strong.append(selectedText);
+    paragraph.append(new FakeTextNode("Hello "), strong, new FakeTextNode(" world."));
+
+    const range = {
+      commonAncestorContainer: selectedText,
+      startContainer: selectedText,
+      startOffset: 0,
+      endContainer: selectedText,
+      endOffset: selectedText.data.length
+    } as unknown as Range;
+
+    withFakeDom(paragraph, () => {
+      withSelection(
+        () =>
+          ({
+            rangeCount: 1,
+            isCollapsed: false,
+            toString: () => selectedText.data,
+            getRangeAt: () => range
+          }) as unknown as Selection,
+        () => {
+          expect(readCurrentSentenceSelection()).toEqual({
+            type: "text",
+            quote: "Hello selected world.",
+            prefix: "",
+            suffix: "",
+            startOffset: 0,
+            endOffset: 21,
+            cssPath: "p:nth-of-type(1)",
+            locatorConfidence: "exact"
+          });
+        }
+      );
+    });
+  });
+});
+
 describe("textContextForRange", () => {
   it("uses the selected repeated occurrence for prefix and suffix", () => {
     const text = "alpha repeat beta repeat gamma";
@@ -152,6 +195,48 @@ type FakeElement = {
   previousElementSibling: FakeElement | null;
 };
 
+type FakeDomNode = FakeElementNode | FakeTextNode;
+
+class FakeElementNode {
+  readonly nodeType = 1;
+  readonly childNodes: FakeDomNode[] = [];
+  parentElement: FakeElementNode | null = null;
+  parentNode: FakeElementNode | null = null;
+  previousElementSibling: FakeElementNode | null = null;
+  readonly tagName: string;
+
+  constructor(tagName: string) {
+    this.tagName = tagName.toUpperCase();
+  }
+
+  get textContent(): string {
+    return this.childNodes.map((node) => node.textContent ?? "").join("");
+  }
+
+  append(...children: FakeDomNode[]): void {
+    for (const child of children) {
+      child.parentElement = this;
+      child.parentNode = this;
+      if (child instanceof FakeElementNode) {
+        child.previousElementSibling = lastElementChild(this.childNodes);
+      }
+      this.childNodes.push(child);
+    }
+  }
+}
+
+class FakeTextNode {
+  readonly nodeType = 3;
+  parentElement: FakeElementNode | null = null;
+  parentNode: FakeElementNode | null = null;
+
+  constructor(readonly data: string) {}
+
+  get textContent(): string {
+    return this.data;
+  }
+}
+
 function fakeElement(
   tagName: string,
   parentElement: FakeElement | null = null,
@@ -180,6 +265,77 @@ function withFakeNode(callback: () => void): void {
       value: originalNode
     });
   }
+}
+
+function withFakeDom(root: FakeElementNode, callback: () => void): void {
+  const originalDocument = globalThis.document;
+  const originalNode = globalThis.Node;
+  const originalNodeFilter = globalThis.NodeFilter;
+
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      createTreeWalker: (treeRoot: FakeElementNode) => fakeTextTreeWalker(treeRoot)
+    }
+  });
+  Object.defineProperty(globalThis, "Node", {
+    configurable: true,
+    value: { ELEMENT_NODE: 1, TEXT_NODE: 3 }
+  });
+  Object.defineProperty(globalThis, "NodeFilter", {
+    configurable: true,
+    value: { SHOW_TEXT: 4 }
+  });
+
+  try {
+    void root;
+    callback();
+  } finally {
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: originalDocument
+    });
+    Object.defineProperty(globalThis, "Node", {
+      configurable: true,
+      value: originalNode
+    });
+    Object.defineProperty(globalThis, "NodeFilter", {
+      configurable: true,
+      value: originalNodeFilter
+    });
+  }
+}
+
+function fakeTextTreeWalker(root: FakeElementNode): { nextNode: () => FakeTextNode | null } {
+  const textNodes: FakeTextNode[] = [];
+  collectFakeTextNodes(root, textNodes);
+  let index = 0;
+
+  return {
+    nextNode: () => textNodes[index++] ?? null
+  };
+}
+
+function collectFakeTextNodes(node: FakeDomNode, output: FakeTextNode[]): void {
+  if (node instanceof FakeTextNode) {
+    output.push(node);
+    return;
+  }
+
+  for (const child of node.childNodes) {
+    collectFakeTextNodes(child, output);
+  }
+}
+
+function lastElementChild(nodes: readonly FakeDomNode[]): FakeElementNode | null {
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const node = nodes[index];
+    if (node instanceof FakeElementNode) {
+      return node;
+    }
+  }
+
+  return null;
 }
 
 function withSelection(getSelection: (() => Selection | null) | undefined, callback: () => void): void {

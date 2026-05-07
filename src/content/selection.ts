@@ -10,6 +10,38 @@ export type TextTargetParts = {
 };
 
 const CONTEXT_LENGTH = 48;
+const INLINE_TEXT_TAGS = new Set([
+  "a",
+  "abbr",
+  "b",
+  "bdi",
+  "bdo",
+  "cite",
+  "code",
+  "data",
+  "dfn",
+  "em",
+  "font",
+  "i",
+  "kbd",
+  "label",
+  "mark",
+  "q",
+  "rp",
+  "rt",
+  "ruby",
+  "s",
+  "samp",
+  "small",
+  "span",
+  "strong",
+  "sub",
+  "sup",
+  "time",
+  "u",
+  "var",
+  "wbr"
+]);
 
 export type TextContext = {
   prefix: string;
@@ -102,7 +134,6 @@ function readSelectionTarget(expandToSentence: boolean): TextTarget | undefined 
 
   const range = selection.getRangeAt(0);
   const commonElement = elementForNode(range.commonAncestorContainer);
-  const offsets = commonElement ? rangeOffsetsInElement(commonElement, range) : undefined;
   if (!commonElement) {
     return createTextTargetFromParts({
       quote,
@@ -111,7 +142,9 @@ function readSelectionTarget(expandToSentence: boolean): TextTarget | undefined 
     });
   }
 
-  const text = commonElement.textContent ?? "";
+  const targetElement = expandToSentence ? sentenceRootForElement(commonElement) : commonElement;
+  const offsets = rangeOffsetsInElement(targetElement, range);
+  const text = targetElement.textContent ?? "";
   const context = offsets ? textContextForRange(text, offsets.start, offsets.end) : undefined;
   if (expandToSentence && offsets) {
     const sentenceRange = sentenceRangeForSelection(text, offsets.start, offsets.end);
@@ -124,7 +157,7 @@ function readSelectionTarget(expandToSentence: boolean): TextTarget | undefined 
         suffix: sentenceContext.suffix,
         startOffset: sentenceRange.start,
         endOffset: sentenceRange.end,
-        cssPath: cssPathForElement(commonElement)
+        cssPath: cssPathForElement(targetElement)
       });
     }
   }
@@ -133,10 +166,41 @@ function readSelectionTarget(expandToSentence: boolean): TextTarget | undefined 
     quote,
     prefix: context?.prefix ?? "",
     suffix: context?.suffix ?? "",
-    startOffset: range.startOffset,
-    endOffset: range.endOffset,
-    cssPath: cssPathForElement(commonElement)
+    startOffset: offsets?.start ?? range.startOffset,
+    endOffset: offsets?.end ?? range.endOffset,
+    cssPath: cssPathForElement(targetElement)
   });
+}
+
+function sentenceRootForElement(element: Element): Element {
+  let current = element;
+
+  while (current.parentElement && isInlineTextElement(current)) {
+    current = current.parentElement;
+  }
+
+  return current;
+}
+
+function isInlineTextElement(element: Element): boolean {
+  const computedDisplay = computedDisplayForElement(element);
+  if (computedDisplay) {
+    return computedDisplay === "inline" || computedDisplay === "contents";
+  }
+
+  return INLINE_TEXT_TAGS.has(element.tagName.toLowerCase());
+}
+
+function computedDisplayForElement(element: Element): string | undefined {
+  if (typeof globalThis.getComputedStyle !== "function") {
+    return undefined;
+  }
+
+  try {
+    return globalThis.getComputedStyle(element).display;
+  } catch {
+    return undefined;
+  }
 }
 
 function isSentenceBoundary(character: string | undefined): boolean {
