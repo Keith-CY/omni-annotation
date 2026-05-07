@@ -1,1 +1,1 @@
-document.documentElement.dataset.omniAnnotationInstalled = "true";
+export {};
