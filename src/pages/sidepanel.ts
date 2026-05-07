@@ -15,7 +15,8 @@ async function render(): Promise<void> {
   }
 
   const activeTab = await getActiveTab();
-  const records = activeTab?.url ? await recordsForUrl(activeTab.url) : [];
+  const activePageUrl = activeTab?.url && isWebPageUrl(activeTab.url) ? activeTab.url : undefined;
+  const records = activePageUrl ? await recordsForUrl(activePageUrl) : [];
 
   clear(app);
   app.append(
@@ -25,14 +26,14 @@ async function render(): Promise<void> {
           el("div", { className: "toolbar-row" }, [
             el("div", { className: "title-block" }, [
               el("h1", {}, ["Current Page"]),
-              el("p", { className: "subtle" }, [activeTab?.title || activeTab?.url || "No active page"])
+              el("p", { className: "subtle" }, [activePageUrl ? activeTab?.title || activePageUrl : "No active web page"])
             ]),
             el("span", { className: "count-pill" }, [String(records.length)])
           ]),
           records.length > 0
             ? el("div", { className: "record-list" }, records.map((record) => renderRecordRow(record)))
             : el("div", { className: "empty-state" }, [
-                activeTab?.url ? "No records for this page yet." : "Open a page to see its records."
+                activePageUrl ? "No records for this page yet." : "Open a web page to see its records."
               ])
         ])
       ])
@@ -46,11 +47,16 @@ async function getActiveTab(): Promise<ChromeTab | undefined> {
 }
 
 async function recordsForUrl(url: string): Promise<AnnotationRecord[]> {
+  const store = await createRecordStore();
+  return store.listRecordsByPage(pageIdForUrl(url));
+}
+
+function isWebPageUrl(url: string): boolean {
   try {
-    const store = await createRecordStore();
-    return store.listRecordsByPage(pageIdForUrl(url));
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
   } catch {
-    return [];
+    return false;
   }
 }
 

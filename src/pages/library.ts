@@ -12,6 +12,8 @@ let records: AnnotationRecord[] = [];
 let filteredRecords: AnnotationRecord[] = [];
 let selectedId: string | undefined;
 let query = "";
+let recordListBody: HTMLElement | undefined;
+let inspectorBody: HTMLElement | undefined;
 
 void init().catch((error: unknown) => {
   renderError(error);
@@ -41,8 +43,8 @@ function render(): void {
   app.append(
     el("section", { className: "app-shell" }, [
       renderSidebar(),
-      renderRecordList(),
-      renderInspector(selected)
+      renderRecordListPanel(),
+      renderInspectorPanel(selected)
     ])
   );
 }
@@ -71,8 +73,24 @@ function renderPlannedNavItem(item: string): HTMLElement {
   ]);
 }
 
-function renderRecordList(): HTMLElement {
+function renderDynamicPanels(): void {
+  const selected = filteredRecords.find((record) => record.id === selectedId) ?? filteredRecords[0];
+  selectedId = selected?.id;
+
+  if (recordListBody) {
+    clear(recordListBody);
+    recordListBody.append(renderRecordListContent());
+  }
+
+  if (inspectorBody) {
+    clear(inspectorBody);
+    inspectorBody.append(renderInspectorContent(selected));
+  }
+}
+
+function renderRecordListPanel(): HTMLElement {
   const searchInput = el("input", {
+    "aria-label": "Search records",
     type: "search",
     placeholder: "Search records",
     value: query,
@@ -80,24 +98,31 @@ function renderRecordList(): HTMLElement {
       query = (event.target as HTMLInputElement).value;
       filteredRecords = sortRecords(searchRecords(records, query));
       selectedId = filteredRecords[0]?.id;
-      render();
+      renderDynamicPanels();
     }
   });
+  recordListBody = el("div", { className: "record-list-region" }, [renderRecordListContent()]);
 
   return el("section", { className: "panel" }, [
     el("div", { className: "panel-inner" }, [
-      el("div", { className: "toolbar-row" }, [
-        el("div", { className: "title-block" }, [
-          el("h2", {}, ["All Records"]),
-          el("p", { className: "subtle" }, [`${filteredRecords.length} of ${records.length}`])
-        ]),
-        el("span", { className: "count-pill" }, [String(filteredRecords.length)])
-      ]),
       searchInput,
-      filteredRecords.length > 0
-        ? el("div", { className: "record-list" }, filteredRecords.map((record) => renderSelectableRow(record)))
-        : el("div", { className: "empty-state" }, [query ? "No records match this search." : "No local records yet."])
+      recordListBody
     ])
+  ]);
+}
+
+function renderRecordListContent(): HTMLElement {
+  return el("div", { className: "detail-list" }, [
+    el("div", { className: "toolbar-row" }, [
+      el("div", { className: "title-block" }, [
+        el("h2", {}, ["All Records"]),
+        el("p", { className: "subtle" }, [`${filteredRecords.length} of ${records.length}`])
+      ]),
+      el("span", { className: "count-pill" }, [String(filteredRecords.length)])
+    ]),
+    filteredRecords.length > 0
+      ? el("div", { className: "record-list" }, filteredRecords.map((record) => renderSelectableRow(record)))
+      : el("div", { className: "empty-state" }, [query ? "No records match this search." : "No local records yet."])
   ]);
 }
 
@@ -109,7 +134,7 @@ function renderSelectableRow(record: AnnotationRecord): HTMLElement {
       type: "button",
       onclick: () => {
         selectedId = record.id;
-        render();
+        renderDynamicPanels();
       }
     },
     [
@@ -122,13 +147,16 @@ function renderSelectableRow(record: AnnotationRecord): HTMLElement {
   );
 }
 
-function renderInspector(record: AnnotationRecord | undefined): HTMLElement {
+function renderInspectorPanel(record: AnnotationRecord | undefined): HTMLElement {
+  inspectorBody = el("div", { className: "panel-inner" }, [renderInspectorContent(record)]);
+  return el("section", { className: "panel" }, [inspectorBody]);
+}
+
+function renderInspectorContent(record: AnnotationRecord | undefined): HTMLElement {
   if (!record) {
-    return el("section", { className: "panel" }, [
-      el("div", { className: "panel-inner" }, [
-        el("h2", {}, ["Inspector"]),
-        el("div", { className: "empty-state" }, ["Select a record to inspect it."])
-      ])
+    return el("div", { className: "detail-list" }, [
+      el("h2", {}, ["Inspector"]),
+      el("div", { className: "empty-state" }, ["Select a record to inspect it."])
     ]);
   }
 
@@ -139,8 +167,7 @@ function renderInspector(record: AnnotationRecord | undefined): HTMLElement {
     }
   }, [record.note]);
 
-  return el("section", { className: "panel" }, [
-    el("div", { className: "panel-inner" }, [
+  return el("div", { className: "detail-list" }, [
       el("div", { className: "detail-heading" }, [
         el("span", { className: `status-pill ${record.sync.status === "flushed" ? "ok" : ""}` }, [record.sync.status]),
         el("div", { className: "detail-title" }, [record.title || record.domain || "Untitled record"]),
@@ -157,7 +184,6 @@ function renderInspector(record: AnnotationRecord | undefined): HTMLElement {
           : el("p", { className: "subtle" }, ["No tags"])
       ]),
       detailField("Sync file", record.sync.filePath ?? "Not flushed")
-    ])
   ]);
 }
 
@@ -206,7 +232,7 @@ async function saveNote(record: AnnotationRecord, note: string): Promise<void> {
   records = records.map((item) => (item.id === updated.id ? updated : item));
   filteredRecords = sortRecords(searchRecords(records, query));
   selectedId = updated.id;
-  render();
+  renderDynamicPanels();
 }
 
 function recordHeading(record: AnnotationRecord): string {

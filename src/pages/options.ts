@@ -71,12 +71,17 @@ async function connectFolder(): Promise<void> {
   try {
     const handle = await window.showDirectoryPicker({ mode: "readwrite" });
     const permission = await requestReadWritePermission(handle);
-    const connectedAt = new Date().toISOString();
 
+    if (!canStoreConnectedFolder(permission)) {
+      statusMessage = "Folder permission was not granted. Reconnect the folder and allow readwrite access.";
+      await render();
+      return;
+    }
+
+    const connectedAt = new Date().toISOString();
     await store.setMeta("syncRootHandle", handle);
     await store.setMeta("folderName", handle.name);
     await store.setMeta("folderConnectedAt", connectedAt);
-
     statusMessage = `Folder connected. Permission: ${permission}.`;
   } catch (error) {
     statusMessage = pickerMessage(error);
@@ -117,6 +122,10 @@ async function requestReadWritePermission(
   }
 
   return handle.requestPermission({ mode: "readwrite" });
+}
+
+function canStoreConnectedFolder(permission: FileSystemPermissionState | "unsupported"): boolean {
+  return permission === "granted" || permission === "unsupported";
 }
 
 function detailField(label: string, value: string): HTMLElement {
