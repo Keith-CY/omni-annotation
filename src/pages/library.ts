@@ -239,11 +239,46 @@ function renderTargetDetails(record: AnnotationRecord): HTMLElement {
         detailField(
           "Viewport",
           `${Math.round(record.target.viewportRect.width)} x ${Math.round(record.target.viewportRect.height)} @ ${record.target.devicePixelRatio}x`
-        )
+        ),
+        renderScreenshotPreview(record.target.assetPath)
       ]);
     case "page":
       return detailField("Page", record.url);
   }
+}
+
+function renderScreenshotPreview(assetPath: string): HTMLElement {
+  const container = el("div", { className: "asset-preview-placeholder" }, ["Loading screenshot preview..."]);
+  void loadAssetPreview(assetPath, container, "Captured screenshot");
+  return container;
+}
+
+async function loadAssetPreview(assetPath: string, container: HTMLElement, alt: string): Promise<void> {
+  const assetId = assetIdFromPath(assetPath);
+  if (!assetId) {
+    container.textContent = "Preview is available after local asset replay.";
+    return;
+  }
+
+  const asset = await store.getAsset(assetId);
+  if (!asset) {
+    container.textContent = "Preview asset is not in local cache.";
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(asset.blob);
+  clear(container);
+  const image = el("img", { className: "asset-preview", src: objectUrl, alt });
+  image.addEventListener("error", () => {
+    URL.revokeObjectURL(objectUrl);
+  }, { once: true });
+  container.append(image);
+}
+
+function assetIdFromPath(assetPath: string): string | undefined {
+  const filename = assetPath.split("/").at(-1);
+  const id = filename?.split(".")[0];
+  return id || undefined;
 }
 
 function detailField(label: string, value: string): HTMLElement {

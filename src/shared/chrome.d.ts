@@ -78,6 +78,7 @@ declare const chrome: {
         sendResponse: (response?: ChromeMessageResponse) => void
       ) => boolean | void | Promise<ChromeMessageResponse>
     >;
+    getURL(path: string): string;
     sendMessage(message: unknown): Promise<ChromeMessageResponse>;
   };
   sidePanel: {

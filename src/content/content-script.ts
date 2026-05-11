@@ -22,6 +22,7 @@ type PageRecordsResponse =
 let selectedColor: AnnotationColor = "yellow";
 let stopImagePickMode: StopImagePickMode | undefined;
 let toolbar: ToolbarController;
+let toastTimer: number | undefined;
 
 installHighlightStyles();
 toolbar = mountToolbar((action) => {
@@ -65,6 +66,9 @@ async function createRecordFromSelection(target: TextTarget | undefined): Promis
 
   if (response.ok && response.record) {
     renderTextHighlightIfNeeded(response.record);
+    showCaptureToast("Text saved");
+  } else if (!response.ok) {
+    showCaptureToast("Text save failed", "error");
   }
 }
 
@@ -108,13 +112,19 @@ function updateToolbarForSelection(): void {
 
 function startImageMode(): void {
   stopImagePickMode?.();
+  showCaptureToast("Click an image to save it", "info", { autoHide: false });
   stopImagePickMode = startImagePickMode((image) => {
     stopImagePickMode = undefined;
-    void sendMessage({
-      type: "record.create-from-image",
-      ...image,
-      page: currentPagePayload()
-    }).catch(() => undefined);
+    void (async () => {
+      const response = await sendMessage<MessageResponse>({
+        type: "record.create-from-image",
+        ...image,
+        page: currentPagePayload()
+      });
+      showCaptureToast(response.ok ? "Image saved" : "Image save failed", response.ok ? "success" : "error");
+    })().catch(() => {
+      showCaptureToast("Image save failed", "error");
+    });
   });
 }
 
@@ -132,7 +142,7 @@ function startScreenshotMode(): void {
         const devicePixelRatio = window.devicePixelRatio || 1;
         const croppedDataUrl = await cropCaptureDataUrl(capture.dataUrl, rect, devicePixelRatio);
 
-        await sendMessage({
+        const response = await sendMessage<MessageResponse>({
           type: "record.create-from-screenshot",
           croppedDataUrl,
           rect,
@@ -140,11 +150,95 @@ function startScreenshotMode(): void {
           devicePixelRatio,
           color: selectedColor
         });
+        showCaptureToast(
+          response.ok ? "Screenshot saved" : "Screenshot save failed",
+          response.ok ? "success" : "error"
+        );
       } finally {
         toolbar.restore(wasToolbarVisible);
       }
-    })().catch(() => undefined);
+    })().catch(() => {
+      showCaptureToast("Screenshot save failed", "error");
+    });
   });
+}
+
+function showCaptureToast(
+  message: string,
+  kind: "success" | "info" | "error" = "success",
+  options: { autoHide?: boolean } = {}
+): void {
+  const existing = document.getElementById("omni-annotation-toast");
+  existing?.remove();
+
+  if (toastTimer !== undefined) {
+    window.clearTimeout(toastTimer);
+    toastTimer = undefined;
+  }
+
+  const host = document.createElement("div");
+  host.id = "omni-annotation-toast";
+  const shadow = host.attachShadow({ mode: "open" });
+  const style = document.createElement("style");
+  style.textContent = `
+    :host {
+      position: fixed;
+      right: 12px;
+      top: 58px;
+      z-index: 2147483646;
+      font: 12px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .toast {
+      align-items: center;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(0, 0, 0, 0.14);
+      border-left: 4px solid #2563eb;
+      border-radius: 8px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.16);
+      color: #1f2937;
+      display: flex;
+      gap: 10px;
+      min-width: 220px;
+      max-width: min(320px, calc(100vw - 24px));
+      padding: 9px 10px;
+    }
+    .toast.success { border-left-color: #16a34a; }
+    .toast.error { border-left-color: #dc2626; }
+    .message { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    button {
+      appearance: none;
+      border: 1px solid rgba(0, 0, 0, 0.16);
+      border-radius: 6px;
+      background: #fff;
+      color: #1f2937;
+      cursor: pointer;
+      font: inherit;
+      padding: 5px 8px;
+      white-space: nowrap;
+    }
+    button:hover { background: #f3f4f6; }
+  `;
+  const toast = document.createElement("div");
+  toast.className = `toast ${kind}`;
+  const text = document.createElement("span");
+  text.className = "message";
+  text.textContent = message;
+  const libraryButton = document.createElement("button");
+  libraryButton.type = "button";
+  libraryButton.textContent = "Open Library";
+  libraryButton.addEventListener("click", () => {
+    window.open(chrome.runtime.getURL("src/pages/library.html"), "_blank", "noopener");
+  });
+  toast.append(text, libraryButton);
+  shadow.append(style, toast);
+  document.documentElement.append(host);
+
+  if (options.autoHide !== false) {
+    toastTimer = window.setTimeout(() => {
+      host.remove();
+      toastTimer = undefined;
+    }, 4200);
+  }
 }
 
 function currentPagePayload(): PagePayload {
