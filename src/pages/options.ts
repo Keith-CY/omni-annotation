@@ -1,4 +1,6 @@
 import { createRecordStore, type RecordStore } from "../shared/idb";
+import { parseDiigoChromeExport } from "../shared/diigo-import";
+import { normalizeUrl, pageIdForUrl } from "../shared/page";
 import { clear, el } from "../ui/dom";
 
 type FolderMeta = {
@@ -53,6 +55,19 @@ async function render(): Promise<void> {
         renderFolderStatus(meta),
         el("button", { type: "button", onclick: () => void connectFolder() }, [
           meta.handle ? "Reconnect iCloud folder" : "Connect iCloud folder"
+        ]),
+        el("div", { className: "detail-list" }, [
+          el("div", { className: "title-block" }, [
+            el("h2", {}, ["Import"]),
+            el("p", { className: "subtle" }, ["Diigo Chrome/del.icio.us HTML export"])
+          ]),
+          el("input", {
+            type: "file",
+            accept: ".html,.htm,text/html",
+            onchange: (event) => {
+              void importDiigoFile(event);
+            }
+          })
         ]),
         statusMessage ? el("div", { className: "message" }, [statusMessage]) : undefined
       ])
@@ -159,6 +174,43 @@ async function replayPendingSyncMessage(): Promise<string> {
   } catch (error) {
     return `Pending replay failed: ${error instanceof Error ? error.message : "unknown-error"}.`;
   }
+}
+
+async function importDiigoFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    const text = await file.text();
+    const parsed = parseDiigoChromeExport(text);
+    let inserted = 0;
+
+    for (const record of parsed.records) {
+      if (await hasExistingPageNote(record.url, record.title)) {
+        continue;
+      }
+      await store.putRecord(record);
+      inserted += 1;
+    }
+
+    statusMessage = `Imported ${inserted} records from ${file.name}. Skipped ${parsed.skipped} invalid rows.`;
+    const replay = await replayPendingSyncMessage();
+    statusMessage = `${statusMessage} ${replay}`;
+  } catch (error) {
+    statusMessage = error instanceof Error ? error.message : "Unable to import file.";
+  } finally {
+    input.value = "";
+    await render();
+  }
+}
+
+async function hasExistingPageNote(url: string, title: string): Promise<boolean> {
+  const pageId = pageIdForUrl(url);
+  const records = await store.listRecordsByPage(pageId);
+  return records.some((record) => record.kind === "page-note" && record.url === normalizeUrl(url) && record.title === title);
 }
 
 function isSyncReplayMessageResponse(value: unknown): value is SyncReplayMessageResponse {
