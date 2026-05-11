@@ -86,6 +86,7 @@ declare const chrome: {
   };
   tabs: {
     query(queryInfo: ChromeTabsQueryInfo): Promise<ChromeTab[]>;
+    create(createProperties: { url?: string; active?: boolean; windowId?: number }): Promise<ChromeTab>;
     captureVisibleTab(windowId?: number, options?: ChromeCaptureOptions): Promise<string>;
   };
 };

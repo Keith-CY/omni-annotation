@@ -71,19 +71,25 @@ type SyncRootConnectedMessage = {
   type: "sync.root-connected";
 };
 
+type OpenLibraryMessage = {
+  type: "library.open";
+};
+
 type RuntimeMessage =
   | CreateFromSelectionMessage
   | CreateFromImageMessage
   | CreateFromScreenshotMessage
   | CaptureVisibleTabMessage
   | RecordsForPageMessage
-  | SyncRootConnectedMessage;
+  | SyncRootConnectedMessage
+  | OpenLibraryMessage;
 
 type MessageResult =
   | { ok: true; id: string; record: AnnotationRecord }
   | { ok: true; dataUrl: string }
   | { ok: true; records: AnnotationRecord[] }
   | { ok: true; replay: Awaited<ReturnType<typeof flushPendingSync>> }
+  | { ok: true }
   | { ok: false; error: string };
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -118,10 +124,17 @@ async function handleMessage(message: unknown, sender: ChromeRuntimeMessageSende
         return await recordsForPage(parsed.message);
       case "sync.root-connected":
         return { ok: true, replay: await flushPendingSyncFromStoredRoot() };
+      case "library.open":
+        return await openLibrary();
     }
   } catch (error) {
     return { ok: false, error: errorReason(error) };
   }
+}
+
+async function openLibrary(): Promise<MessageResult> {
+  await chrome.tabs.create({ url: chrome.runtime.getURL("src/pages/library.html") });
+  return { ok: true };
 }
 
 async function captureVisibleTab(sender: ChromeRuntimeMessageSender): Promise<MessageResult> {
@@ -334,6 +347,8 @@ function parseRuntimeMessage(message: unknown): { ok: true; message: RuntimeMess
       return parseRecordsForPageMessage(message);
     case "sync.root-connected":
       return { ok: true, message: { type: "sync.root-connected" } };
+    case "library.open":
+      return { ok: true, message: { type: "library.open" } };
     case "record.create-from-selection":
       return parseSelectionMessage(message);
     case "record.create-from-image":

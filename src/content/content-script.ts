@@ -227,7 +227,9 @@ function showCaptureToast(
   libraryButton.type = "button";
   libraryButton.textContent = "Open Library";
   libraryButton.addEventListener("click", () => {
-    window.open(chrome.runtime.getURL("src/pages/library.html"), "_blank", "noopener");
+    void sendMessage({ type: "library.open" }).catch(() => {
+      showCaptureToast("Library open failed", "error");
+    });
   });
   toast.append(text, libraryButton);
   shadow.append(style, toast);
