@@ -75,7 +75,12 @@ final class SelectionPopoverController: NSObject {
 
         currentSelection = selection
         lastSelectionKey = key
-        show(at: NSEvent.mouseLocation)
+        let mouseLocation = NSEvent.mouseLocation
+        let anchor = SelectionPopoverAnchor.point(
+            for: selection,
+            fallbackMouse: ScreenPoint(x: Double(mouseLocation.x), y: Double(mouseLocation.y))
+        )
+        show(at: NSPoint(x: anchor.x, y: anchor.y))
     }
 
     private func selectionKey(_ selection: SystemSelection) -> String {

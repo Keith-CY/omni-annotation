@@ -102,6 +102,22 @@ final class OmniAnnotationCoreTests: XCTestCase {
         XCTAssertEqual(disabled.title, "Start at Login")
         XCTAssertEqual(disabled.menuState, "off")
     }
+
+    func testSelectionPopoverAnchorPrefersSelectionBoundsOverMouseLocation() {
+        let selection = SystemSelection(
+            text: "selected text",
+            contextBefore: "",
+            contextAfter: "",
+            appName: "Safari",
+            bundleIdentifier: "com.apple.Safari",
+            windowTitle: "Example",
+            screenBounds: ScreenBounds(x: 120, y: 320, width: 240, height: 28)
+        )
+
+        let anchor = SelectionPopoverAnchor.point(for: selection, fallbackMouse: ScreenPoint(x: 900, y: 100))
+
+        XCTAssertEqual(anchor, ScreenPoint(x: 240, y: 348))
+    }
 }
 
 private final class RecordingChromeBridge: ChromeBridge {

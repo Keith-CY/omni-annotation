@@ -28,6 +28,7 @@ public struct SystemSelection: Codable, Equatable, Sendable {
     public var appName: String
     public var bundleIdentifier: String
     public var windowTitle: String
+    public var screenBounds: ScreenBounds?
 
     public init(
         text: String,
@@ -35,7 +36,8 @@ public struct SystemSelection: Codable, Equatable, Sendable {
         contextAfter: String,
         appName: String,
         bundleIdentifier: String,
-        windowTitle: String
+        windowTitle: String,
+        screenBounds: ScreenBounds? = nil
     ) {
         self.text = text
         self.contextBefore = contextBefore
@@ -43,6 +45,41 @@ public struct SystemSelection: Codable, Equatable, Sendable {
         self.appName = appName
         self.bundleIdentifier = bundleIdentifier
         self.windowTitle = windowTitle
+        self.screenBounds = screenBounds
+    }
+}
+
+public struct ScreenPoint: Codable, Equatable, Sendable {
+    public var x: Double
+    public var y: Double
+
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+    }
+}
+
+public struct ScreenBounds: Codable, Equatable, Sendable {
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+}
+
+public enum SelectionPopoverAnchor {
+    public static func point(for selection: SystemSelection, fallbackMouse: ScreenPoint) -> ScreenPoint {
+        guard let bounds = selection.screenBounds, bounds.width > 0, bounds.height > 0 else {
+            return fallbackMouse
+        }
+
+        return ScreenPoint(x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height)
     }
 }
 

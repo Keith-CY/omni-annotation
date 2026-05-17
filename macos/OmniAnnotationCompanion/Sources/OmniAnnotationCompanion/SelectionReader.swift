@@ -17,7 +17,8 @@ final class AccessibilitySelectionReader: SelectionReading {
     func currentSelection() -> SystemSelection? {
         guard let app = NSWorkspace.shared.frontmostApplication,
               let pid = app.processIdentifier as pid_t?,
-              let text = selectedText(pid: pid)
+              let focused = focusedElement(pid: pid),
+              let text = selectedText(in: focused)
         else {
             return nil
         }
@@ -28,22 +29,76 @@ final class AccessibilitySelectionReader: SelectionReading {
             contextAfter: "",
             appName: app.localizedName ?? app.bundleIdentifier ?? "Unknown App",
             bundleIdentifier: app.bundleIdentifier ?? "",
-            windowTitle: windowTitle(pid: pid) ?? ""
+            windowTitle: windowTitle(pid: pid) ?? "",
+            screenBounds: selectedTextScreenBounds(in: focused)
         )
     }
 
-    private func selectedText(pid: pid_t) -> String? {
+    private func focusedElement(pid: pid_t) -> AXUIElement? {
         let appElement = AXUIElementCreateApplication(pid)
-        guard let focused = focusedElement(in: appElement) else {
-            return nil
-        }
+        return focusedElement(in: appElement)
+    }
 
+    private func selectedText(in focused: AXUIElement) -> String? {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(focused, kAXSelectedTextAttribute as CFString, &value)
         guard result == .success else {
             return nil
         }
         return value as? String
+    }
+
+    private func selectedTextScreenBounds(in focused: AXUIElement) -> ScreenBounds? {
+        guard let selectedRange = selectedTextRange(in: focused) else {
+            return nil
+        }
+
+        var boundsValue: CFTypeRef?
+        let result = AXUIElementCopyParameterizedAttributeValue(
+            focused,
+            kAXBoundsForRangeParameterizedAttribute as CFString,
+            selectedRange,
+            &boundsValue
+        )
+        guard result == .success, let boundsValue else {
+            return nil
+        }
+
+        var rect = CGRect.zero
+        guard AXValueGetType(boundsValue as! AXValue) == .cgRect,
+              AXValueGetValue(boundsValue as! AXValue, .cgRect, &rect),
+              rect.width > 0,
+              rect.height > 0
+        else {
+            return nil
+        }
+
+        let appKitRect = convertAccessibilityRectToAppKitScreenRect(rect)
+        return ScreenBounds(
+            x: Double(appKitRect.minX),
+            y: Double(appKitRect.minY),
+            width: Double(appKitRect.width),
+            height: Double(appKitRect.height)
+        )
+    }
+
+    private func selectedTextRange(in focused: AXUIElement) -> AXValue? {
+        var rangeValue: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(focused, kAXSelectedTextRangeAttribute as CFString, &rangeValue)
+        guard result == .success, let rangeValue else {
+            return nil
+        }
+
+        let value = rangeValue as! AXValue
+        guard AXValueGetType(value) == .cfRange else {
+            return nil
+        }
+        return value
+    }
+
+    private func convertAccessibilityRectToAppKitScreenRect(_ rect: CGRect) -> CGRect {
+        let screenMaxY = NSScreen.screens.map(\.frame.maxY).max() ?? NSScreen.main?.frame.maxY ?? 0
+        return CGRect(x: rect.minX, y: screenMaxY - rect.maxY, width: rect.width, height: rect.height)
     }
 
     private func focusedElement(in appElement: AXUIElement) -> AXUIElement? {
