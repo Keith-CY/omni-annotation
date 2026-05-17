@@ -74,6 +74,9 @@ function recordHeading(record: AnnotationRecord): string {
   if (record.target.type === "text") {
     return `${kindLabel(record.kind)}: ${record.target.quote}`;
   }
+  if (record.target.type === "sticky-note" && record.target.text.trim()) {
+    return `${kindLabel(record.kind)}: ${record.target.text.trim()}`;
+  }
 
   return `${kindLabel(record.kind)}: ${record.title || record.domain}`;
 }
@@ -94,12 +97,18 @@ function kindLabel(kind: AnnotationRecord["kind"]): string {
   switch (kind) {
     case "page-note":
       return "Page note";
+    case "sticky-note":
+      return "Sticky note";
+    case "system-excerpt":
+      return "System excerpt";
     case "screenshot":
       return "Screenshot";
     case "image":
       return "Image";
     case "text":
       return "Text";
+    default:
+      return "Record";
   }
 }
 

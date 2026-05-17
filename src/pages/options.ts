@@ -1,6 +1,7 @@
 import { createRecordStore, type RecordStore } from "../shared/idb";
-import { parseDiigoChromeExport } from "../shared/diigo-import";
+import { parseDiigoImportText, readDiigoImportText } from "../shared/diigo-import";
 import { normalizeUrl, pageIdForUrl } from "../shared/page";
+import type { AnnotationRecord } from "../shared/types";
 import { clear, el } from "../ui/dom";
 
 type FolderMeta = {
@@ -22,8 +23,10 @@ type SyncReplayMessageResponse =
   | { ok: false; error: string };
 
 const app = document.querySelector<HTMLElement>("#app");
+const IMPORT_ACCEPT = ".zip,.html,.htm,.csv,application/zip,text/html,text/csv";
 let store: RecordStore;
 let statusMessage = "";
+let importDragDepth = 0;
 
 void init().catch((error: unknown) => {
   renderError(error);
@@ -44,6 +47,13 @@ async function render(): Promise<void> {
   }
 
   const meta = await readFolderMeta();
+  const importInput = el("input", {
+    type: "file",
+    accept: IMPORT_ACCEPT,
+    onchange: (event) => {
+      void handleImportInputChange(event);
+    }
+  });
   clear(app);
   app.append(
     el("section", { className: "options-shell" }, [
@@ -59,16 +69,31 @@ async function render(): Promise<void> {
         el("div", { className: "detail-list" }, [
           el("div", { className: "title-block" }, [
             el("h2", {}, ["Import"]),
-            el("p", { className: "subtle" }, ["Diigo Chrome/del.icio.us HTML export"])
+            el("p", { className: "subtle" }, ["Diigo export (.zip, .html, .csv)"])
           ]),
-          el("input", {
-            type: "file",
-            accept: ".html,.htm,text/html",
-            onchange: (event) => {
-              void importDiigoFile(event);
+          el("div", {
+            className: "import-dropzone",
+            ondragenter: (event) => {
+              handleImportDragEnter(event);
+            },
+            ondragover: (event) => {
+              handleImportDragOver(event);
+            },
+            ondragleave: (event) => {
+              handleImportDragLeave(event);
+            },
+            ondrop: (event) => {
+              void handleImportDrop(event);
             }
-          })
+          }, [
+            el("div", { className: "import-dropzone-copy" }, [
+              el("p", {}, ["Drag and drop your Diigo .zip/.html/.csv export file here"]),
+              el("p", { className: "subtle" }, ["Or choose a file below"])
+            ])
+          ]),
+          importInput
         ]),
+        el("button", { type: "button", onclick: () => void openLibraryFromOptions() }, ["Open Library"]),
         statusMessage ? el("div", { className: "message" }, [statusMessage]) : undefined
       ])
     ])
@@ -176,20 +201,84 @@ async function replayPendingSyncMessage(): Promise<string> {
   }
 }
 
-async function importDiigoFile(event: Event): Promise<void> {
+async function handleImportInputChange(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) {
     return;
   }
 
+  input.value = "";
+  await importDiigoFile(file);
+}
+
+function handleImportDragEnter(event: Event): void {
+  const dragEvent = event as DragEvent;
+  if (!hasDraggedFiles(dragEvent)) {
+    return;
+  }
+
+  dragEvent.preventDefault();
+  importDragDepth += 1;
+  setImportDropActive(event.currentTarget, true);
+}
+
+function handleImportDragOver(event: Event): void {
+  const dragEvent = event as DragEvent;
+  if (!hasDraggedFiles(dragEvent)) {
+    return;
+  }
+
+  dragEvent.preventDefault();
+  if (dragEvent.dataTransfer) {
+    dragEvent.dataTransfer.dropEffect = "copy";
+  }
+}
+
+function handleImportDragLeave(event: Event): void {
+  const dragEvent = event as DragEvent;
+  if (!hasDraggedFiles(dragEvent)) {
+    return;
+  }
+
+  dragEvent.preventDefault();
+  importDragDepth = Math.max(0, importDragDepth - 1);
+  if (importDragDepth === 0) {
+    setImportDropActive(event.currentTarget, false);
+  }
+}
+
+async function handleImportDrop(event: Event): Promise<void> {
+  const dragEvent = event as DragEvent;
+  if (!hasDraggedFiles(dragEvent)) {
+    return;
+  }
+
+  dragEvent.preventDefault();
+  importDragDepth = 0;
+  setImportDropActive(event.currentTarget, false);
+
+  const file = dragEvent.dataTransfer?.files?.[0];
+  if (!file) {
+    return;
+  }
+  await importDiigoFile(file);
+}
+
+async function importDiigoFile(file: File): Promise<void> {
+  if (!isSupportedImportFile(file.name)) {
+    statusMessage = "Unsupported import file. Use a Diigo .zip, .html, or .csv export.";
+    await render();
+    return;
+  }
+
   try {
-    const text = await file.text();
-    const parsed = parseDiigoChromeExport(text);
+    const text = await readDiigoImportText(file);
+    const parsed = parseDiigoImportText(text);
     let inserted = 0;
 
     for (const record of parsed.records) {
-      if (await hasExistingPageNote(record.url, record.title)) {
+      if (await hasExistingImportedRecord(record)) {
         continue;
       }
       await store.putRecord(record);
@@ -201,16 +290,34 @@ async function importDiigoFile(event: Event): Promise<void> {
     statusMessage = `${statusMessage} ${replay}`;
   } catch (error) {
     statusMessage = error instanceof Error ? error.message : "Unable to import file.";
-  } finally {
-    input.value = "";
-    await render();
   }
+
+  await render();
 }
 
-async function hasExistingPageNote(url: string, title: string): Promise<boolean> {
-  const pageId = pageIdForUrl(url);
+async function hasExistingImportedRecord(candidate: AnnotationRecord): Promise<boolean> {
+  if (candidate.source?.provider === "diigo" && candidate.source.externalId) {
+    return hasExistingDiigoExternalId(candidate.pageId, candidate.source.externalId);
+  }
+
+  const pageId = pageIdForUrl(candidate.url);
   const records = await store.listRecordsByPage(pageId);
-  return records.some((record) => record.kind === "page-note" && record.url === normalizeUrl(url) && record.title === title);
+  return records.some(
+    (record) =>
+      record.kind === "page-note" &&
+      record.url === normalizeUrl(candidate.url) &&
+      record.title === candidate.title
+  );
+}
+
+async function hasExistingDiigoExternalId(pageId: string, externalId: string): Promise<boolean> {
+  const records = await store.listRecordsByPage(pageId);
+  return records.some(
+    (record) =>
+      record.kind === "page-note" &&
+      record.source?.provider === "diigo" &&
+      record.source.externalId === externalId
+  );
 }
 
 function isSyncReplayMessageResponse(value: unknown): value is SyncReplayMessageResponse {
@@ -253,6 +360,38 @@ function pickerMessage(error: unknown): string {
   }
 
   return error instanceof Error ? error.message : "Unable to connect folder.";
+}
+
+async function openLibraryFromOptions(): Promise<void> {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "library.open" });
+    if (!isObject(response) || response.ok !== true) {
+      statusMessage = "Library open failed.";
+    } else {
+      statusMessage = "Library opened.";
+    }
+  } catch (error) {
+    statusMessage = error instanceof Error ? error.message : "Library open failed.";
+  }
+
+  await render();
+}
+
+function hasDraggedFiles(event: DragEvent): boolean {
+  const types = event.dataTransfer?.types;
+  return Array.isArray(types) ? types.includes("Files") : Array.from(types ?? []).includes("Files");
+}
+
+function setImportDropActive(target: EventTarget | null, active: boolean): void {
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  target.classList.toggle("active", active);
+}
+
+function isSupportedImportFile(filename: string): boolean {
+  const lower = filename.toLowerCase();
+  return lower.endsWith(".zip") || lower.endsWith(".html") || lower.endsWith(".htm") || lower.endsWith(".csv");
 }
 
 function renderError(error: unknown): void {

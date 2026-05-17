@@ -1,6 +1,15 @@
-export type RecordKind = "text" | "image" | "screenshot" | "page-note";
+export type RecordKind = "text" | "image" | "screenshot" | "page-note" | "sticky-note" | "system-excerpt";
 export type AnnotationColor = "yellow" | "green" | "pink" | "purple" | "cyan";
 export type SyncStatus = "local" | "pending" | "flushed" | "conflict";
+export type AnnotationSource =
+  | {
+      provider: "diigo";
+      externalId: string;
+      visibility?: "private" | "public";
+      addedAt?: string;
+      lastVisitAt?: string;
+      rawTags?: string;
+    };
 
 export type TextTarget = {
   type: "text";
@@ -31,7 +40,39 @@ export type ScreenshotTarget = {
 
 export type PageTarget = { type: "page" };
 
-export type AnnotationTarget = TextTarget | ImageTarget | ScreenshotTarget | PageTarget;
+export type StickyImage = {
+  assetPath: string;
+  width: number;
+  height: number;
+};
+
+export type StickyNoteTarget = {
+  type: "sticky-note";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  images: StickyImage[];
+};
+
+export type SystemSelectionTarget = {
+  type: "system-selection";
+  quote: string;
+  contextBefore: string;
+  contextAfter: string;
+  appName: string;
+  bundleIdentifier: string;
+  windowTitle: string;
+};
+
+export type AnnotationTarget =
+  | TextTarget
+  | ImageTarget
+  | ScreenshotTarget
+  | PageTarget
+  | StickyNoteTarget
+  | SystemSelectionTarget;
 
 export type ScreenshotAnnotation = {
   type: "highlight";
@@ -57,4 +98,5 @@ export type AnnotationRecord = {
   review: { enabled: boolean; dueAt?: string };
   target: AnnotationTarget;
   sync: { status: SyncStatus; filePath?: string };
+  source?: AnnotationSource;
 };

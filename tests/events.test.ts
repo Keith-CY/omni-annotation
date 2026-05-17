@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { applyRecordEvent, parseEventLine, serializeEvent, type RecordEvent } from "../src/shared/events";
-import { domainForUrl, normalizeUrl, pageIdForUrl } from "../src/shared/page";
+import { domainForUrl, normalizeUrl, pageIdCandidatesForUrl, pageIdForUrl } from "../src/shared/page";
 import type { AnnotationRecord } from "../src/shared/types";
 
 const baseRecord: AnnotationRecord = {
@@ -150,5 +150,19 @@ describe("page helpers", () => {
       pageIdForUrl("https://docs.example.com/path")
     );
     expect(pageIdForUrl("https://docs.example.com/path")).toStartWith("page_docs.example.com_");
+  });
+
+  it("expands page id lookup across protocol/hostname/path variants", () => {
+    const candidates = pageIdCandidatesForUrl("http://jianshu.com/p/31377066bf97");
+    expect(candidates).toContain(pageIdForUrl("http://jianshu.com/p/31377066bf97"));
+    expect(candidates).toContain(pageIdForUrl("https://jianshu.com/p/31377066bf97"));
+    expect(candidates).toContain(pageIdForUrl("http://www.jianshu.com/p/31377066bf97"));
+    expect(candidates).toContain(pageIdForUrl("https://www.jianshu.com/p/31377066bf97"));
+  });
+
+  it("includes query and non-query url variants for page lookup", () => {
+    const candidates = pageIdCandidatesForUrl("https://example.com/path?from=reader");
+    expect(candidates).toContain(pageIdForUrl("https://example.com/path?from=reader"));
+    expect(candidates).toContain(pageIdForUrl("https://example.com/path"));
   });
 });

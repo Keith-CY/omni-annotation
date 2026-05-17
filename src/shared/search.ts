@@ -31,7 +31,23 @@ function targetSearchText(record: AnnotationRecord): string {
       return [record.target.sourceUrl, record.target.altText ?? "", record.target.assetPath ?? ""].join(" ");
     case "screenshot":
       return record.target.assetPath;
+    case "sticky-note":
+      return [
+        record.target.text,
+        ...record.target.images.map((image) => image.assetPath)
+      ].join(" ");
+    case "system-selection":
+      return [
+        record.target.quote,
+        record.target.contextBefore,
+        record.target.contextAfter,
+        record.target.appName,
+        record.target.bundleIdentifier,
+        record.target.windowTitle
+      ].join(" ");
     case "page":
+      return "";
+    default:
       return "";
   }
 }

@@ -1,11 +1,13 @@
 import type { AnnotationColor } from "../shared/types";
+import { positionToolbarForSelection, type SelectionAnchorRect } from "./toolbar-position";
 
 export type ToolbarAction =
   | { type: "color"; color: AnnotationColor }
   | { type: "highlight" }
   | { type: "sentence-highlight" }
   | { type: "image" }
-  | { type: "screenshot" };
+  | { type: "screenshot" }
+  | { type: "sticky-note" };
 
 const COLORS: AnnotationColor[] = ["yellow", "green", "pink", "purple", "cyan"];
 
@@ -13,7 +15,8 @@ export type ToolbarController = {
   element: HTMLElement;
   hide(): boolean;
   restore(wasVisible: boolean): void;
-  show(): void;
+  setColor(color: AnnotationColor): void;
+  show(anchor: SelectionAnchorRect, color: AnnotationColor): void;
 };
 
 export function mountToolbar(onAction: (action: ToolbarAction) => void): ToolbarController {
@@ -31,8 +34,8 @@ export function mountToolbar(onAction: (action: ToolbarAction) => void): Toolbar
   style.textContent = `
     :host {
       position: fixed;
-      top: 12px;
-      right: 12px;
+      left: 0;
+      top: 0;
       z-index: 2147483646;
       font: 12px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -44,10 +47,17 @@ export function mountToolbar(onAction: (action: ToolbarAction) => void): Toolbar
       box-shadow: 0 8px 30px rgba(0, 0, 0, 0.16);
       display: flex;
       gap: 6px;
-      padding: 6px;
+      padding: 6px 7px;
       user-select: none;
     }
-    button {
+    label {
+      align-items: center;
+      color: #374151;
+      display: flex;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    select {
       appearance: none;
       border: 1px solid rgba(0, 0, 0, 0.16);
       border-radius: 6px;
@@ -56,74 +66,58 @@ export function mountToolbar(onAction: (action: ToolbarAction) => void): Toolbar
       cursor: pointer;
       font: inherit;
       height: 28px;
-      min-width: 28px;
-      padding: 0 8px;
+      min-width: 104px;
+      padding: 0 28px 0 8px;
     }
-    button:hover { background: #f3f4f6; }
-    .swatch {
-      border-radius: 999px;
-      min-width: 18px;
-      width: 18px;
-      height: 18px;
-      padding: 0;
+    .select-wrap {
+      position: relative;
     }
-    .swatch[aria-pressed="true"] {
-      outline: 2px solid #111827;
-      outline-offset: 2px;
+    .select-wrap::after {
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid #4b5563;
+      content: "";
+      pointer-events: none;
+      position: absolute;
+      right: 10px;
+      top: 12px;
     }
-    .yellow { background: #ffdb4d; }
-    .green { background: #54d67f; }
-    .pink { background: #ff80ab; }
-    .purple { background: #b488ff; }
-    .cyan { background: #50d3e6; }
   `;
 
   const bar = document.createElement("div");
   bar.className = "bar";
 
-  let selectedColor: AnnotationColor = "yellow";
-  const swatches = COLORS.map((color) => {
-    const button = document.createElement("button");
-    button.className = `swatch ${color}`;
-    button.type = "button";
-    button.title = color;
-    button.setAttribute("aria-label", `Use ${color}`);
-    button.setAttribute("aria-pressed", color === selectedColor ? "true" : "false");
-    button.addEventListener("click", () => {
-      selectedColor = color;
-      for (const swatch of swatches) {
-        swatch.setAttribute("aria-pressed", swatch.title === color ? "true" : "false");
-      }
-      onAction({ type: "color", color });
-    });
-    return button;
+  const label = document.createElement("label");
+  const labelText = document.createElement("span");
+  labelText.textContent = "Color";
+  const selectWrap = document.createElement("span");
+  selectWrap.className = "select-wrap";
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", "Annotation color");
+  for (const color of COLORS) {
+    const option = document.createElement("option");
+    option.value = color;
+    option.textContent = colorLabel(color);
+    select.append(option);
+  }
+  select.addEventListener("change", () => {
+    if (isColor(select.value)) {
+      onAction({ type: "color", color: select.value });
+    }
   });
-
-  const noteButton = createButton("Note", "Create annotation from selected text", () =>
-    onAction({ type: "highlight" })
-  );
-  const sentenceButton = createButton("Sentence", "Create annotation from current sentence", () =>
-    onAction({ type: "sentence-highlight" })
-  );
-  const imageButton = createButton("Image", "Pick image", () => onAction({ type: "image" }));
-  const shotButton = createButton("Shot", "Capture screenshot area", () => onAction({ type: "screenshot" }));
-
-  bar.append(...swatches, noteButton, sentenceButton, imageButton, shotButton);
+  selectWrap.append(select);
+  label.append(labelText, selectWrap);
+  bar.append(label);
   shadow.append(style, bar);
   document.documentElement.append(host);
-  return toolbarController(host, bar);
+  return toolbarController(host, bar, select);
 }
 
-function createButton(label: string, title: string, onClick: () => void): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  button.title = title;
-  button.addEventListener("click", onClick);
-  return button;
-}
-
-function toolbarController(element: HTMLElement, bar: HTMLElement | undefined): ToolbarController {
+function toolbarController(
+  element: HTMLElement,
+  bar: HTMLElement | undefined,
+  select?: HTMLSelectElement
+): ToolbarController {
   return {
     element,
     hide() {
@@ -136,15 +130,48 @@ function toolbarController(element: HTMLElement, bar: HTMLElement | undefined): 
         element.style.display = "";
       }
     },
-    show() {
+    setColor(color) {
+      const colorSelect = select ?? toolbarSelect(element);
+      if (colorSelect) {
+        colorSelect.value = color;
+      }
+    },
+    show(anchor, color) {
+      this.setColor(color);
       element.style.display = "";
       if (bar) {
         bar.hidden = false;
       }
+      const toolbarRect = element.getBoundingClientRect();
+      const position = positionToolbarForSelection(
+        anchor,
+        {
+          width: toolbarRect.width || 140,
+          height: toolbarRect.height || 40
+        },
+        {
+          width: window.innerWidth,
+          height: window.innerHeight
+        }
+      );
+      element.style.left = `${position.left}px`;
+      element.style.top = `${position.top}px`;
     }
   };
 }
 
 function toolbarBar(element: HTMLElement): HTMLElement | undefined {
   return element.shadowRoot?.querySelector<HTMLElement>(".bar") ?? undefined;
+}
+
+function toolbarSelect(element: HTMLElement): HTMLSelectElement | undefined {
+  return element.shadowRoot?.querySelector<HTMLSelectElement>("select") ?? undefined;
+}
+
+function colorLabel(color: AnnotationColor): string {
+  return color[0]?.toUpperCase() + color.slice(1);
+}
+
+function isColor(value: string): value is AnnotationColor {
+  return COLORS.includes(value as AnnotationColor);
 }

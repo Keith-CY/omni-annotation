@@ -4,6 +4,7 @@
   "description": "Dependency-minimized annotation extension scaffold.",
   "version": "0.0.0",
   "action": {
+    "default_popup": "src/pages/popup.html",
     "default_title": "Omni Annotation",
     "default_icon": {
       "16": "icons/icon.svg",
@@ -26,7 +27,7 @@
     "default_path": "src/pages/sidepanel.html"
   },
   "options_page": "src/pages/options.html",
-  "permissions": ["activeTab", "sidePanel", "storage", "tabs"],
+  "permissions": ["activeTab", "contextMenus", "sidePanel", "storage", "tabs"],
   "host_permissions": ["<all_urls>"],
   "icons": {
     "16": "icons/icon.svg",

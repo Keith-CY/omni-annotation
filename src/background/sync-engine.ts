@@ -17,6 +17,7 @@ type RootHandleResult =
 type PendingAssetPath = {
   folder: "screenshots" | "images";
   filename: string;
+  stickyImageIndex?: number;
 };
 type ResolveRecordAssetResult =
   | { ok: true; record: AnnotationRecord; assetsFlushed: number }
@@ -159,36 +160,36 @@ async function resolveRecordAsset(
   assetByPath: Map<string, StoredAsset>,
   record: AnnotationRecord
 ): Promise<ResolveRecordAssetResult> {
-  const pendingPath = pendingAssetPath(record.target);
-  if (!pendingPath) {
-    return { ok: true, record, assetsFlushed: 0 };
-  }
-
-  const key = assetKey(pendingPath.folder, pendingPath.filename);
-  const asset = assetByPath.get(key);
-  if (!asset) {
-    return { ok: false, reason: `pending-asset-not-found:${pendingPath.filename}` };
-  }
-
+  let currentRecord = record;
   let assetsFlushed = 0;
-  if (asset.syncStatus !== "flushed") {
-    const flushed = await flushStoredAsset(root, store, asset);
-    if (!flushed.ok) {
-      return { ok: false, reason: flushed.reason };
-    }
-    assetsFlushed = 1;
-    assetByPath.set(key, { ...asset, syncStatus: "flushed" });
-  }
 
-  const assetPath = `assets/${pendingPath.folder}/${pendingPath.filename}`;
-  return {
-    ok: true,
-    record: {
-      ...record,
-      target: withResolvedAssetPath(record.target, assetPath)
-    },
-    assetsFlushed
-  };
+  while (true) {
+    const pendingPath = pendingAssetPath(currentRecord.target);
+    if (!pendingPath) {
+      return { ok: true, record: currentRecord, assetsFlushed };
+    }
+
+    const key = assetKey(pendingPath.folder, pendingPath.filename);
+    const asset = assetByPath.get(key);
+    if (!asset) {
+      return { ok: false, reason: `pending-asset-not-found:${pendingPath.filename}` };
+    }
+
+    if (asset.syncStatus !== "flushed") {
+      const flushed = await flushStoredAsset(root, store, asset);
+      if (!flushed.ok) {
+        return { ok: false, reason: flushed.reason };
+      }
+      assetsFlushed += 1;
+      assetByPath.set(key, { ...asset, syncStatus: "flushed" });
+    }
+
+    const assetPath = `assets/${pendingPath.folder}/${pendingPath.filename}`;
+    currentRecord = {
+      ...currentRecord,
+      target: withResolvedAssetPath(currentRecord.target, assetPath, pendingPath)
+    };
+  }
 }
 
 async function flushStoredAsset(
@@ -206,29 +207,60 @@ async function flushStoredAsset(
 }
 
 function pendingAssetPath(target: AnnotationTarget): PendingAssetPath | undefined {
-  if ((target.type !== "image" && target.type !== "screenshot") || !target.assetPath) {
-    return undefined;
+  if (target.type === "image" || target.type === "screenshot") {
+    if (!target.assetPath) {
+      return undefined;
+    }
+    const match = /^pending\/(screenshots|images)\/([^/]+)$/.exec(target.assetPath);
+    if (!match) {
+      return undefined;
+    }
+    return {
+      folder: match[1] as "screenshots" | "images",
+      filename: match[2] as string
+    };
   }
 
-  const match = /^pending\/(screenshots|images)\/([^/]+)$/.exec(target.assetPath);
-  if (!match) {
-    return undefined;
+  if (target.type === "sticky-note") {
+    for (let index = 0; index < target.images.length; index += 1) {
+      const image = target.images[index];
+      const match = /^pending\/(screenshots|images)\/([^/]+)$/.exec(image?.assetPath ?? "");
+      if (!match) {
+        continue;
+      }
+      return {
+        folder: match[1] as "screenshots" | "images",
+        filename: match[2] as string,
+        stickyImageIndex: index
+      };
+    }
   }
 
-  return {
-    folder: match[1] as "screenshots" | "images",
-    filename: match[2] as string
-  };
+  return undefined;
 }
 
-function withResolvedAssetPath(target: AnnotationTarget, assetPath: string): AnnotationTarget {
+function withResolvedAssetPath(
+  target: AnnotationTarget,
+  assetPath: string,
+  pending: PendingAssetPath
+): AnnotationTarget {
   switch (target.type) {
     case "image":
       return { ...target, assetPath };
     case "screenshot":
       return { ...target, assetPath };
+    case "sticky-note": {
+      if (pending.stickyImageIndex === undefined) {
+        return target;
+      }
+      const images = target.images.map((image, index) =>
+        index === pending.stickyImageIndex ? { ...image, assetPath } : image
+      );
+      return { ...target, images };
+    }
     case "text":
     case "page":
+    case "system-selection":
       return target;
   }
 }

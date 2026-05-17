@@ -48,6 +48,33 @@ interface ChromeCaptureOptions {
   quality?: number;
 }
 
+type ChromeContextMenuContext = "all" | "page" | "frame" | "selection" | "link" | "editable" | "image" | "video" | "audio";
+
+type ChromeContextMenuItemType = "normal" | "checkbox" | "radio" | "separator";
+
+interface ChromeContextMenusCreateProperties {
+  id?: string;
+  title?: string;
+  type?: ChromeContextMenuItemType;
+  contexts?: ChromeContextMenuContext[];
+  parentId?: string;
+  checked?: boolean;
+  enabled?: boolean;
+  visible?: boolean;
+}
+
+interface ChromeContextMenusOnClickData {
+  menuItemId: string | number;
+  parentMenuItemId?: string | number;
+  mediaType?: "image" | "video" | "audio";
+  linkUrl?: string;
+  srcUrl?: string;
+  pageUrl?: string;
+  frameUrl?: string;
+  selectionText?: string;
+  editable: boolean;
+}
+
 type FileSystemPermissionMode = "read" | "readwrite";
 type FileSystemPermissionState = "granted" | "denied" | "prompt";
 
@@ -84,9 +111,15 @@ declare const chrome: {
   sidePanel: {
     setPanelBehavior(options: { openPanelOnActionClick: boolean }): Promise<void>;
   };
+  contextMenus: {
+    create(createProperties: ChromeContextMenusCreateProperties): void;
+    removeAll(): Promise<void>;
+    onClicked: ChromeEvent<(info: ChromeContextMenusOnClickData, tab?: ChromeTab) => void>;
+  };
   tabs: {
     query(queryInfo: ChromeTabsQueryInfo): Promise<ChromeTab[]>;
     create(createProperties: { url?: string; active?: boolean; windowId?: number }): Promise<ChromeTab>;
     captureVisibleTab(windowId?: number, options?: ChromeCaptureOptions): Promise<string>;
+    sendMessage(tabId: number, message: unknown): Promise<ChromeMessageResponse>;
   };
 };

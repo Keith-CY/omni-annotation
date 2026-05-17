@@ -73,4 +73,25 @@ describe("searchRecords", () => {
   it("matches screenshot asset paths", () => {
     expect(searchRecords([screenshotRecord], "screenshots page-capture")).toEqual([screenshotRecord]);
   });
+
+  it("matches system excerpt app metadata and selected quote", () => {
+    const systemRecord = {
+      ...textRecord,
+      id: "rec_system",
+      kind: "system-excerpt",
+      title: "Preview - Document.pdf",
+      domain: "macos",
+      target: {
+        type: "system-selection",
+        quote: "selected paragraph",
+        contextBefore: "before",
+        contextAfter: "after",
+        appName: "Preview",
+        bundleIdentifier: "com.apple.Preview",
+        windowTitle: "Document.pdf"
+      }
+    } satisfies AnnotationRecord;
+
+    expect(searchRecords([systemRecord], "preview selected")).toEqual([systemRecord]);
+  });
 });

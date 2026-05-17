@@ -1,0 +1,4 @@
+dist/
+.DS_Store
+macos/OmniAnnotationCompanion/.build/
+macos/OmniAnnotationCompanion/build/
