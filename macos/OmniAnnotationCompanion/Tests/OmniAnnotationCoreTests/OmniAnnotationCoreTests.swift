@@ -118,6 +118,14 @@ final class OmniAnnotationCoreTests: XCTestCase {
 
         XCTAssertEqual(anchor, ScreenPoint(x: 240, y: 348))
     }
+
+    func testSelectionMonitorLifecycleReinstallsMonitorAfterWakeRecovery() {
+        var lifecycle = SelectionMonitorLifecycle()
+
+        XCTAssertEqual(lifecycle.start(), [.install])
+        XCTAssertEqual(lifecycle.recoverAfterWake(), [.remove, .install])
+        XCTAssertEqual(lifecycle.stop(), [.remove])
+    }
 }
 
 private final class RecordingChromeBridge: ChromeBridge {

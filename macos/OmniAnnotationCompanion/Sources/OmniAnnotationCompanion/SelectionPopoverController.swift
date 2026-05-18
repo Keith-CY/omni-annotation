@@ -7,9 +7,11 @@ final class SelectionPopoverController: NSObject {
     private let getColor: () -> AnnotationColor
     private let setColor: (AnnotationColor) -> Void
     private var monitor: Any?
+    private var lifecycle = SelectionMonitorLifecycle()
     private var panel: NSPanel?
     private var tooltipPanel: NSPanel?
     private var colorPanel: NSPanel?
+    private var notificationObservers: [NSObjectProtocol] = []
     private var currentSelection: SystemSelection?
     private var lastSelectionKey = ""
     private let panelHeight: CGFloat = 44
@@ -27,16 +29,13 @@ final class SelectionPopoverController: NSObject {
     }
 
     func start() {
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
-            self?.scheduleSelectionCheck()
-        }
+        applyMonitorOperations(lifecycle.start())
+        installRecoveryObserversIfNeeded()
     }
 
     func stop() {
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
-        }
-        monitor = nil
+        removeRecoveryObservers()
+        applyMonitorOperations(lifecycle.stop())
         panel?.orderOut(nil)
         panel?.close()
         tooltipPanel?.orderOut(nil)
@@ -46,6 +45,85 @@ final class SelectionPopoverController: NSObject {
         panel = nil
         tooltipPanel = nil
         colorPanel = nil
+    }
+
+    private func recoverMonitorAfterWake() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                return
+            }
+            self.applyMonitorOperations(self.lifecycle.recoverAfterWake())
+            self.hide()
+        }
+    }
+
+    private func installRecoveryObserversIfNeeded() {
+        guard notificationObservers.isEmpty else {
+            return
+        }
+
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        notificationObservers.append(
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.recoverMonitorAfterWake()
+            }
+        )
+        notificationObservers.append(
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.screensDidWakeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.recoverMonitorAfterWake()
+            }
+        )
+        notificationObservers.append(
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification,
+                object: NSApp,
+                queue: .main
+            ) { [weak self] _ in
+                self?.recoverMonitorAfterWake()
+            }
+        )
+    }
+
+    private func removeRecoveryObservers() {
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        for observer in notificationObservers {
+            workspaceCenter.removeObserver(observer)
+            NotificationCenter.default.removeObserver(observer)
+        }
+        notificationObservers.removeAll()
+    }
+
+    private func applyMonitorOperations(_ operations: [SelectionMonitorOperation]) {
+        for operation in operations {
+            switch operation {
+            case .install:
+                installMouseUpMonitor()
+            case .remove:
+                removeMouseUpMonitor()
+            }
+        }
+    }
+
+    private func installMouseUpMonitor() {
+        removeMouseUpMonitor()
+        monitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in
+            self?.scheduleSelectionCheck()
+        }
+    }
+
+    private func removeMouseUpMonitor() {
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        monitor = nil
     }
 
     private func scheduleSelectionCheck() {
