@@ -122,9 +122,9 @@ final class OmniAnnotationCoreTests: XCTestCase {
     func testSelectionMonitorLifecycleReinstallsMonitorAfterWakeRecovery() {
         var lifecycle = SelectionMonitorLifecycle()
 
-        XCTAssertEqual(lifecycle.start(), [.install])
-        XCTAssertEqual(lifecycle.recoverAfterWake(), [.remove, .install])
-        XCTAssertEqual(lifecycle.stop(), [.remove])
+        XCTAssertEqual(lifecycle.start(), [.installMonitor, .startWatchdog])
+        XCTAssertEqual(lifecycle.recoverAfterWake(), [.removeMonitor, .installMonitor, .restartWatchdog])
+        XCTAssertEqual(lifecycle.stop(), [.removeMonitor, .stopWatchdog])
     }
 }
 

@@ -7,6 +7,7 @@ final class SelectionPopoverController: NSObject {
     private let getColor: () -> AnnotationColor
     private let setColor: (AnnotationColor) -> Void
     private var monitor: Any?
+    private var watchdogTimer: Timer?
     private var lifecycle = SelectionMonitorLifecycle()
     private var panel: NSPanel?
     private var tooltipPanel: NSPanel?
@@ -104,10 +105,16 @@ final class SelectionPopoverController: NSObject {
     private func applyMonitorOperations(_ operations: [SelectionMonitorOperation]) {
         for operation in operations {
             switch operation {
-            case .install:
+            case .installMonitor:
                 installMouseUpMonitor()
-            case .remove:
+            case .removeMonitor:
                 removeMouseUpMonitor()
+            case .startWatchdog:
+                startSelectionWatchdog(interval: 2.0)
+            case .restartWatchdog:
+                startSelectionWatchdog(interval: 0.75)
+            case .stopWatchdog:
+                stopSelectionWatchdog()
             }
         }
     }
@@ -124,6 +131,19 @@ final class SelectionPopoverController: NSObject {
             NSEvent.removeMonitor(monitor)
         }
         monitor = nil
+    }
+
+    private func startSelectionWatchdog(interval: TimeInterval) {
+        stopSelectionWatchdog()
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.showForCurrentSelectionIfNeeded()
+        }
+        watchdogTimer?.tolerance = min(interval * 0.5, 1.0)
+    }
+
+    private func stopSelectionWatchdog() {
+        watchdogTimer?.invalidate()
+        watchdogTimer = nil
     }
 
     private func scheduleSelectionCheck() {

@@ -1,8 +1,11 @@
 import Foundation
 
 public enum SelectionMonitorOperation: Equatable, Sendable {
-    case install
-    case remove
+    case installMonitor
+    case removeMonitor
+    case startWatchdog
+    case restartWatchdog
+    case stopWatchdog
 }
 
 public struct SelectionMonitorLifecycle: Sendable {
@@ -15,12 +18,12 @@ public struct SelectionMonitorLifecycle: Sendable {
             return []
         }
         isInstalled = true
-        return [.install]
+        return [.installMonitor, .startWatchdog]
     }
 
     public mutating func recoverAfterWake() -> [SelectionMonitorOperation] {
         isInstalled = true
-        return [.remove, .install]
+        return [.removeMonitor, .installMonitor, .restartWatchdog]
     }
 
     public mutating func stop() -> [SelectionMonitorOperation] {
@@ -28,6 +31,6 @@ public struct SelectionMonitorLifecycle: Sendable {
             return []
         }
         isInstalled = false
-        return [.remove]
+        return [.removeMonitor, .stopWatchdog]
     }
 }
